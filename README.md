@@ -1,14 +1,14 @@
-# 📦 py17track: A Simple Python API for 17track.net
+# 📦 pyseventeentrack: A Simple Python API for 17track.net
 
-[![CI](https://github.com/shaiu/py17track/workflows/CI/badge.svg)](https://github.com/shaiu/py17track/actions)
-[![PyPi](https://img.shields.io/pypi/v/py17track.svg)](https://pypi.python.org/pypi/py17track)
-[![Version](https://img.shields.io/pypi/pyversions/py17track.svg)](https://pypi.python.org/pypi/py17track)
-[![License](https://img.shields.io/pypi/l/py17track.svg)](https://github.com/shaiu/py17track/blob/master/LICENSE)
-[![Code Coverage](https://codecov.io/gh/shaiu/py17track/branch/master/graph/badge.svg)](https://codecov.io/gh/shaiu/py17track)
-[![Maintainability](https://api.codeclimate.com/v1/badges/af60d65b69d416136fc9/maintainability)](https://codeclimate.com/github/shaiu/py17track/maintainability)
+[![CI](https://github.com/shaiu/pyseventeentrack/workflows/CI/badge.svg)](https://github.com/shaiu/pyseventeentrack/actions)
+[![PyPi](https://img.shields.io/pypi/v/pyseventeentrack.svg)](https://pypi.python.org/pypi/pyseventeentrack)
+[![Version](https://img.shields.io/pypi/pyversions/pyseventeentrack.svg)](https://pypi.python.org/pypi/pyseventeentrack)
+[![License](https://img.shields.io/pypi/l/pyseventeentrack.svg)](https://github.com/shaiu/pyseventeentrack/blob/master/LICENSE)
+[![Code Coverage](https://codecov.io/gh/shaiu/pyseventeentrack/branch/master/graph/badge.svg)](https://codecov.io/gh/shaiu/pyseventeentrack)
+[![Maintainability](https://api.codeclimate.com/v1/badges/af60d65b69d416136fc9/maintainability)](https://codeclimate.com/github/shaiu/pyseventeentrack/maintainability)
 [![Say Thanks](https://img.shields.io/badge/SayThanks-!-1EAEDB.svg)](https://saythanks.io/to/shaiu)
 
-`py17track` is a simple Python library to track packages in
+`pyseventeentrack` is a simple Python library to track packages in
 [17track.net](http://www.17track.net/) accounts.
 
 Since this is uses an unofficial API, there's no guarantee that 17track.net
@@ -17,7 +17,7 @@ API may stop working at any moment.
 
 # Python Versions
 
-`py17track` is currently supported on:
+`pyseventeentrack` is currently supported on:
 
 * Python 3.9
 * Python 3.10
@@ -26,7 +26,7 @@ API may stop working at any moment.
 # Installation
 
 ```python
-pip install py17track
+pip install pyseventeentrack
 ```
 
 # Usage
@@ -36,7 +36,7 @@ import asyncio
 
 from aiohttp import ClientSession
 
-from py17track import Client
+from pyseventeentrack import Client
 
 
 async def main() -> None:
@@ -56,7 +56,7 @@ async def main() -> None:
 
     # Get all packages associated with a user's account:
     packages = await client.profile.packages()
-    # >>> [py17track.package.Package(..), ...]
+    # >>> [pyseventeentrack.package.Package(..), ...]
     
     # Add new packages by tracking number
     await client.profile.add_package('<TRACKING NUMBER>', '<FRIENDLY NAME>')
@@ -76,7 +76,7 @@ import asyncio
 
 from aiohttp import ClientSession
 
-from py17track import Client
+from pyseventeentrack import Client
 
 
 async def main() -> None:
@@ -105,9 +105,9 @@ Each `Package` object has the following info:
 
 # Contributing
 
-1. [Check for open features/bugs](https://github.com/shaiu/py17track/issues)
-  or [initiate a discussion on one](https://github.com/shaiu/py17track/issues/new).
-2. [Fork the repository](https://github.com/shaiu/py17track/fork).
+1. [Check for open features/bugs](https://github.com/shaiu/pyseventeentrack/issues)
+  or [initiate a discussion on one](https://github.com/shaiu/pyseventeentrack/issues/new).
+2. [Fork the repository](https://github.com/shaiu/pyseventeentrack/fork).
 3. (_optional, but highly recommended_) Create a virtual environment: `python3 -m venv .venv`
 4. (_optional, but highly recommended_) Enter the virtual environment: `source ./.venv/bin/activate`
 5. Install the dev environment: `script/setup`

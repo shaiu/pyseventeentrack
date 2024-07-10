@@ -5,8 +5,8 @@ import aiohttp
 import pytest
 from pytz import UTC, timezone
 
-from py17track import Client
-from py17track.errors import InvalidTrackingNumberError, RequestError
+from pyseventeentrack import Client
+from pyseventeentrack.errors import InvalidTrackingNumberError, RequestError
 
 from .common import TEST_EMAIL, TEST_PASSWORD, load_fixture
 

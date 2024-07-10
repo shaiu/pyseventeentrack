@@ -60,7 +60,7 @@ jobs:
             --verbose \
             --cov-report term-missing \
             --cov-report xml \
-            --cov=py17track tests
+            --cov=pyseventeentrack tests
 
       - uses: codecov/codecov-action@v3
         with:
