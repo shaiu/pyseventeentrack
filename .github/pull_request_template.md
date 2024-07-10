@@ -2,7 +2,7 @@
 
 **Does this fix a specific issue?**
 
-Fixes https://github.com/bachya/py17track/issues/<ISSUE ID>
+Fixes https://github.com/shaiu/py17track/issues/<ISSUE ID>
   
 **Checklist:**
 

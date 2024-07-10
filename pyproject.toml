@@ -22,9 +22,9 @@ name = "py17track"
 version = "2021.12.2"
 description = "A Simple Python API for 17track.net"
 readme = "README.md"
-authors = ["Aaron Bach <bachya1208@gmail.com>"]
+authors = ["Shai Ungar <shaiungar@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/bachya/py17track"
+repository = "https://github.com/shaiu/py17track"
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",

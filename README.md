@@ -1,12 +1,12 @@
 # 📦 py17track: A Simple Python API for 17track.net
 
-[![CI](https://github.com/bachya/py17track/workflows/CI/badge.svg)](https://github.com/bachya/py17track/actions)
+[![CI](https://github.com/shaiu/py17track/workflows/CI/badge.svg)](https://github.com/shaiu/py17track/actions)
 [![PyPi](https://img.shields.io/pypi/v/py17track.svg)](https://pypi.python.org/pypi/py17track)
 [![Version](https://img.shields.io/pypi/pyversions/py17track.svg)](https://pypi.python.org/pypi/py17track)
-[![License](https://img.shields.io/pypi/l/py17track.svg)](https://github.com/bachya/py17track/blob/master/LICENSE)
-[![Code Coverage](https://codecov.io/gh/bachya/py17track/branch/master/graph/badge.svg)](https://codecov.io/gh/bachya/py17track)
-[![Maintainability](https://api.codeclimate.com/v1/badges/af60d65b69d416136fc9/maintainability)](https://codeclimate.com/github/bachya/py17track/maintainability)
-[![Say Thanks](https://img.shields.io/badge/SayThanks-!-1EAEDB.svg)](https://saythanks.io/to/bachya)
+[![License](https://img.shields.io/pypi/l/py17track.svg)](https://github.com/shaiu/py17track/blob/master/LICENSE)
+[![Code Coverage](https://codecov.io/gh/shaiu/py17track/branch/master/graph/badge.svg)](https://codecov.io/gh/shaiu/py17track)
+[![Maintainability](https://api.codeclimate.com/v1/badges/af60d65b69d416136fc9/maintainability)](https://codeclimate.com/github/shaiu/py17track/maintainability)
+[![Say Thanks](https://img.shields.io/badge/SayThanks-!-1EAEDB.svg)](https://saythanks.io/to/shaiu)
 
 `py17track` is a simple Python library to track packages in
 [17track.net](http://www.17track.net/) accounts.
@@ -105,9 +105,9 @@ Each `Package` object has the following info:
 
 # Contributing
 
-1. [Check for open features/bugs](https://github.com/bachya/py17track/issues)
-  or [initiate a discussion on one](https://github.com/bachya/py17track/issues/new).
-2. [Fork the repository](https://github.com/bachya/py17track/fork).
+1. [Check for open features/bugs](https://github.com/shaiu/py17track/issues)
+  or [initiate a discussion on one](https://github.com/shaiu/py17track/issues/new).
+2. [Fork the repository](https://github.com/shaiu/py17track/fork).
 3. (_optional, but highly recommended_) Create a virtual environment: `python3 -m venv .venv`
 4. (_optional, but highly recommended_) Enter the virtual environment: `source ./.venv/bin/activate`
 5. Install the dev environment: `script/setup`
