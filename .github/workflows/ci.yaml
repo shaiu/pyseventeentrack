@@ -62,7 +62,7 @@ jobs:
             --cov-report xml \
             --cov=pyseventeentrack tests
 
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v4.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
