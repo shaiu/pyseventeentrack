@@ -13,6 +13,33 @@ on:
       - master
 
 jobs:
+  lint-ruff-format:
+    name: Check ruff-format
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v4.1.7
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v5.1.1
+        id: python
+        with:
+          python-version: 3.x
+          check-latest: true
+      - name: Restore base Python virtual environment
+        id: cache-venv
+        uses: actions/cache/restore@v4.0.2
+        with:
+          path: venv
+          fail-on-cache-miss: true
+          key: >-
+            ${{ runner.os }}-${{ steps.python.outputs.python-version }}-venv-${{
+              needs.info.outputs.pre-commit_cache_key }}
+      - name: Run ruff-format
+        run: |
+          . venv/bin/activate
+          pre-commit run --hook-stage manual ruff-format --all-files --show-diff-on-failure
+        env:
+          RUFF_OUTPUT_FORMAT: github
   test:
     name: Tests
 
@@ -65,21 +92,3 @@ jobs:
       - uses: codecov/codecov-action@v4.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-
-  lint:
-
-    name: "Linting & Static Analysis"
-
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.x"
-          architecture: x64
-
-      - uses: pre-commit/action@v3.0.0
-        env:
-          SKIP: no-commit-to-branch
