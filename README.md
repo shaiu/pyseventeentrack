@@ -4,7 +4,7 @@
 [![PyPi](https://img.shields.io/pypi/v/pyseventeentrack.svg)](https://pypi.python.org/pypi/pyseventeentrack)
 [![Version](https://img.shields.io/pypi/pyversions/pyseventeentrack.svg)](https://pypi.python.org/pypi/pyseventeentrack)
 [![License](https://img.shields.io/pypi/l/pyseventeentrack.svg)](https://github.com/shaiu/pyseventeentrack/blob/master/LICENSE)
-[![Code Coverage](https://codecov.io/gh/shaiu/pyseventeentrack/branch/master/graph/badge.svg)](https://codecov.io/gh/shaiu/pyseventeentrack)
+[![Code Coverage](https://codecov.io/gh/shaiu/pyseventeentrack/graph/badge.svg?token=3PSG5EV6F7)](https://codecov.io/gh/shaiu/pyseventeentrack)
 [![Maintainability](https://api.codeclimate.com/v1/badges/af60d65b69d416136fc9/maintainability)](https://codeclimate.com/github/shaiu/pyseventeentrack/maintainability)
 [![Say Thanks](https://img.shields.io/badge/SayThanks-!-1EAEDB.svg)](https://saythanks.io/to/shaiu)
 
