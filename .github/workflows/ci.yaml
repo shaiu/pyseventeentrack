@@ -33,7 +33,7 @@ jobs:
       - name: Generate partial Python venv restore key
         id: generate_python_cache_key
         run: |
-          echo "key=venv-${{ env.CACHE_VERSION }}-${{
+          echo key=venv-${{ env.CACHE_VERSION }}-${{
             hashFiles('requirements_test.txt') }} >> $GITHUB_OUTPUT
       - name: Generate partial pre-commit restore key
         id: generate_pre-commit_cache_key
