@@ -1,13 +1,10 @@
 """Define tests for the client object."""
-from datetime import datetime
 
 import aiohttp
 import pytest
-from pytz import UTC, timezone
 
 from pyseventeentrack import Client
 from pyseventeentrack.errors import InvalidTrackingNumberError, RequestError
-
 from .common import TEST_EMAIL, TEST_PASSWORD, load_fixture
 
 

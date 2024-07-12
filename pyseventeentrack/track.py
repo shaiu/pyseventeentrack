@@ -1,4 +1,5 @@
 """Define interaction with an individual package."""
+
 from typing import Callable, Coroutine, List
 
 from .errors import InvalidTrackingNumberError
