@@ -36,5 +36,6 @@ toml==0.10.2
 tomlkit==0.13.0
 types-pytz==2024.1.0.20240417
 typing_extensions==4.12.2
+uv==0.2.24
 virtualenv==20.26.3
 yarl==1.9.4
