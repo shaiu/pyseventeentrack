@@ -13,9 +13,35 @@ on:
       - master
 
 jobs:
+  pre-commit:
+    name: Prepare pre-commit base
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@v4.1.7
+      - name: Set up Python 3.x
+        id: python
+        uses: actions/setup-python@v5.1.1
+        with:
+          python-version: 3.x
+          check-latest: true
+      - name: Create Python virtual environment
+        run: |
+          python -m venv venv
+          . venv/bin/activate
+          python --version
+          pip install "$(grep '^uv' < requirements_test.txt)"
+          uv pip install "$(cat requirements_test.txt | grep pre-commit)"
+      - name: Install pre-commit dependencies
+        run: |
+          . venv/bin/activate
+          pre-commit install-hooks
+
   lint-ruff-format:
     name: Check ruff-format
     runs-on: ubuntu-22.04
+    needs:
+      - pre-commit
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@v4.1.7
@@ -35,6 +61,8 @@ jobs:
     name: Tests
 
     runs-on: ubuntu-latest
+    needs:
+      - lint-ruff-format
 
     strategy:
       matrix:
@@ -61,6 +89,8 @@ jobs:
     name: Test Coverage
 
     runs-on: ubuntu-latest
+    needs:
+      - test
 
     steps:
       - uses: actions/checkout@v3
