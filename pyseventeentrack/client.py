@@ -1,4 +1,5 @@
 """Define a 17track.net client."""
+
 from typing import Optional
 
 from aiohttp import ClientSession, ClientTimeout
@@ -23,7 +24,7 @@ class Client:  # pylint: disable=too-few-public-methods
         # This is disabled until a workaround can be found:
         # self.track = Track(self._request)
 
-    async def _request(
+    async def _request(  # pylint: disable=too-many-arguments
         self,
         method: str,
         url: str,
@@ -50,7 +51,7 @@ class Client:  # pylint: disable=too-few-public-methods
                 data: dict = await resp.json(content_type=None)
                 return data
         except ClientError as err:
-            raise RequestError(f"Error requesting data from {url}: {err}")
+            raise RequestError(f"Error requesting data from {url}: {err}") from err
         finally:
             if not use_running_session:
                 await session.close()

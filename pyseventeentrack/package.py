@@ -1,4 +1,5 @@
 """Define a simple structure for a package."""
+
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -255,10 +256,8 @@ PACKAGE_TYPE_MAP: Dict[int, str] = {
 }
 
 
-@attr.s(
-    frozen=True
-)  # pylint: disable=too-few-public-methods,too-many-instance-attributes
-class Package:
+@attr.s(frozen=True)
+class Package:  # pylint: disable=too-few-public-methods,too-many-instance-attributes
     """Define a package object."""
 
     tracking_number: str = attr.ib()

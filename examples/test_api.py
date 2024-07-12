@@ -1,4 +1,5 @@
 """Run an example script to quickly test a 17track.net account."""
+
 import asyncio
 import logging
 

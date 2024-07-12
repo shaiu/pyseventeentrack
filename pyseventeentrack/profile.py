@@ -1,4 +1,5 @@
 """Define interaction with a user profile."""
+
 import json
 import logging
 from typing import Callable, Coroutine, List, Optional, Union
@@ -141,10 +142,10 @@ class Profile:
             new_package = next(
                 p for p in packages if p.tracking_number == tracking_number
             )
-        except StopIteration:
+        except StopIteration as err:
             raise InvalidTrackingNumberError(
                 f"Recently added package not found by tracking number: {tracking_number}"
-            )
+            ) from err
 
         _LOGGER.debug("Found internal ID of recently added package: %s", new_package.id)
 
