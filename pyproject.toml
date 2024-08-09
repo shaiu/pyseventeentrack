@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pyseventeentrack"
-version = "1.0.0"
+version = "1.0.1"
 description = "A Simple Python API for 17track.net"
 readme = "README.md"
 authors = ["Shai Ungar <shaiungar@gmail.com>"]
