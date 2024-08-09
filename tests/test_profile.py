@@ -373,3 +373,103 @@ async def test_add_existing_package(aresponses):
             client = Client(session=session)
             await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
             await client.profile.add_package("1234567890987654321")
+
+
+@pytest.mark.asyncio
+async def test_archive_package(aresponses):
+    """Test archiving a package."""
+    aresponses.add(
+        "user.17track.net",
+        "/userapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("archive_package_response.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        res = await client.profile.archive_package("1234567890987654321")
+        assert res is None
+
+
+@pytest.mark.asyncio
+async def test_archive_package_non_existing(aresponses):
+    """Test archiving a non existing package."""
+    aresponses.add(
+        "user.17track.net",
+        "/userapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("archive_package_response.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(InvalidTrackingNumberError):
+            client = Client(session=session)
+            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+            await client.profile.archive_package("1234567890987654321111")
+
+
+@pytest.mark.asyncio
+async def test_archive_package_error_response(aresponses):
+    """Test archiving a package with failed response."""
+    aresponses.add(
+        "user.17track.net",
+        "/userapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("archive_package_response_failure_response.json"),
+            status=200,
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(RequestError):
+            client = Client(session=session)
+            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+            await client.profile.archive_package("1234567890987654321")

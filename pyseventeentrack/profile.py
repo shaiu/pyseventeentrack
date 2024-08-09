@@ -171,3 +171,34 @@ class Profile:
         code = remark_resp.get("Code")
         if code != 0:
             raise RequestError(f"Non-zero status code in response: {code}")
+
+    async def archive_package(self, tracking_number: str):
+        """Archive a package by tracking number."""
+        packages = await self.packages()
+
+        try:
+            package = next(p for p in packages if p.tracking_number == tracking_number)
+        except StopIteration as err:
+            raise InvalidTrackingNumberError(
+                f"Package not found by tracking number: {tracking_number}"
+            ) from err
+
+        internal_id = package.id
+
+        _LOGGER.debug("Found internal ID of package: %s", internal_id)
+
+        archive_resp: dict = await self._request(
+            "post",
+            API_URL_BUYER,
+            json={
+                "version": "1.0",
+                "method": "SetTrackArchived",
+                "param": {"TrackInfoIds": [internal_id]},
+            },
+        )
+
+        _LOGGER.debug("Archive package response: %s", archive_resp)
+
+        code = archive_resp.get("Code")
+        if code != 0:
+            raise RequestError(f"Non-zero status code in response: {code}")
