@@ -26,6 +26,7 @@ aiohttp = ">=3.9.5"
 attrs = ">=19.3"
 python = "^3.9.0"
 pytz = ">=2021.1"
+cryptography = ">=45.0.4"
 
 [tool.poetry.dev-dependencies]
 aresponses = "^3.0.0"

@@ -36,11 +36,14 @@ class Profile:
 
         _LOGGER.debug("Login response: %s", login_resp)
 
-        if login_resp.get("code") != 0:
+        account_data = login_resp.get("data")
+        if not account_data or not account_data.get("gid"):
+            _LOGGER.error(
+                "Login response successful (code 0) but 'gid' is missing or empty in 'data': %s",
+                login_resp,
+            )
             return False
-
-        self.account_id = login_resp["data"]["gid"]
-
+        self.account_id = account_data["gid"]
         return True
 
     async def packages(
