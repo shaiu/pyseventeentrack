@@ -13,7 +13,7 @@ async def test_login_failure(aresponses):
     """Test that a failed login returns the correct response."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_failure_response.json"), status=200
@@ -31,7 +31,7 @@ async def test_login_success(aresponses):
     """Test that a successful login returns the correct response."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -49,7 +49,7 @@ async def test_no_explicit_session(aresponses):
     """Test not providing an explicit aiohttp ClientSession."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -66,7 +66,7 @@ async def test_packages(aresponses):
     """Test getting packages."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -95,7 +95,7 @@ async def test_packages_with_unknown_state(aresponses):
     """Test getting packages."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -125,7 +125,7 @@ async def test_packages_default_timezone(aresponses):
     """Test getting packages with default timezone."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -153,7 +153,7 @@ async def test_packages_user_defined_timezone(aresponses):
     """Test getting packages with user-defined timezone."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -181,7 +181,7 @@ async def test_summary(aresponses):
     """Test getting package summary."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -213,7 +213,7 @@ async def test_add_new_package(aresponses):
     """Test adding a new package."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -237,7 +237,7 @@ async def test_add_new_package_with_friendly_name(aresponses):
     """Test adding a new package with friendly name."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -275,7 +275,7 @@ async def test_add_new_package_with_friendly_name_not_found(aresponses):
     """Test adding a new package with friendly name but package not found after adding it."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -314,7 +314,7 @@ async def test_add_new_package_with_friendly_name_error_response(aresponses):
     """Test adding a new package with friendly name but setting the name fails."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -353,7 +353,7 @@ async def test_add_existing_package(aresponses):
     """Test adding an existing new package."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -380,7 +380,7 @@ async def test_archive_package(aresponses):
     """Test archiving a package."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -413,7 +413,7 @@ async def test_archive_package_non_existing(aresponses):
     """Test archiving a non existing package."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200
@@ -446,7 +446,7 @@ async def test_archive_package_error_response(aresponses):
     """Test archiving a package with failed response."""
     aresponses.add(
         "user.17track.net",
-        "/userapi/call",
+        "/user-api/v1/sign-in-by-password",
         "post",
         aresponses.Response(
             text=load_fixture("authentication_success_response.json"), status=200

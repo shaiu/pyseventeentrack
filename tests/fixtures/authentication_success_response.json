@@ -1,5 +1,5 @@
 {
-  "Json": {
+  "data": {
     "FUserRole": 4,
     "FNickname": "John Doe",
     "FEmail": "john.doe@company.com",
@@ -8,5 +8,5 @@
     "FPhoto": 10001,
     "gid": "1234567890987654321"
   },
-  "Code": 0
+  "code": 0
 }
