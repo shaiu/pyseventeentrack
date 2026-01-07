@@ -60,6 +60,20 @@ async def main() -> None:
     # Add new packages by tracking number
     await client.profile.add_package('<TRACKING NUMBER>', '<FRIENDLY NAME>')
 
+    # Archive / activate / delete packages
+    await client.profile.archive_package('<TRACKING NUMBER>')
+    await client.profile.activate_package('<TRACKING NUMBER>')
+    await client.profile.delete_package('<TRACKING NUMBER>')
+
+    # Set tag type or carriers (internal tracking ID required)
+    await client.profile.set_tag_type('<TRACK INFO ID>', '0')
+    await client.profile.set_carrier('<TRACK INFO ID>', '<FIRST CARRIER>', '<SECOND CARRIER>')
+
+    # Fetch and update order info (internal tracking ID required)
+    order_info = await client.profile.order_info_by_id('<TRACK INFO ID>')
+    # >>> {'opn': 'Acme', 'ptoid': '123', 'pt': '01', 'otime': '2024-12-01'}
+    await client.profile.save_order_info('<TRACK INFO ID>', opn='Acme', ptoid='123', pt='01', otime='2024-12-01')
+
 
 asyncio.run(main())
 ```
@@ -116,4 +130,3 @@ Each `Package` object has the following info:
 9. Update `README.md` with any new documentation.
 10. Add yourself to `AUTHORS.md`.
 11. Submit a pull request!
-
