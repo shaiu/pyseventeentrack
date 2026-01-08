@@ -2,6 +2,7 @@
 
 import aiohttp
 import pytest
+import pytest_asyncio
 
 from pyseventeentrack import Client
 from pyseventeentrack.errors import InvalidTrackingNumberError, RequestError
@@ -42,6 +43,24 @@ async def test_login_success(aresponses):
         client = Client(session=session)
         login_result = await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         assert login_result is True
+
+
+@pytest_asyncio.fixture
+async def authenticated_client(aresponses):
+    """Return an authenticated client."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        yield client
 
 
 @pytest.mark.asyncio
@@ -476,17 +495,9 @@ async def test_archive_package_error_response(aresponses):
 
 
 @pytest.mark.asyncio
-async def test_activate_package(aresponses):
+async def test_activate_package(aresponses, authenticated_client):
     """Test activating a package."""
     aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
-    aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
         "post",
@@ -501,25 +512,14 @@ async def test_activate_package(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        client = Client(session=session)
-        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-        res = await client.profile.activate_package("1234567890987654321")
-        assert res is None
+    res = await authenticated_client.profile.activate_package("1234567890987654321")
+    assert res is None
 
 
 @pytest.mark.asyncio
-async def test_activate_package_non_existing(aresponses):
+async def test_activate_package_non_existing(aresponses, authenticated_client):
     """Test activating a non existing package."""
     aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
-    aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
         "post",
@@ -534,24 +534,13 @@ async def test_activate_package_non_existing(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        with pytest.raises(InvalidTrackingNumberError):
-            client = Client(session=session)
-            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-            await client.profile.activate_package("1234567890987654321111")
+    with pytest.raises(InvalidTrackingNumberError):
+        await authenticated_client.profile.activate_package("1234567890987654321111")
 
 
 @pytest.mark.asyncio
-async def test_activate_package_error_response(aresponses):
+async def test_activate_package_error_response(aresponses, authenticated_client):
     """Test activating a package with failed response."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -568,25 +557,14 @@ async def test_activate_package_error_response(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        with pytest.raises(RequestError):
-            client = Client(session=session)
-            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-            await client.profile.activate_package("1234567890987654321")
+    with pytest.raises(RequestError):
+        await authenticated_client.profile.activate_package("1234567890987654321")
 
 
 @pytest.mark.asyncio
-async def test_delete_package(aresponses):
+async def test_delete_package(aresponses, authenticated_client):
     """Test deleting a package."""
     aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
-    aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
         "post",
@@ -599,25 +577,14 @@ async def test_delete_package(aresponses):
         aresponses.Response(text=load_fixture("delete_package_response.json"), status=200),
     )
 
-    async with aiohttp.ClientSession() as session:
-        client = Client(session=session)
-        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-        res = await client.profile.delete_package("1234567890987654321")
-        assert res is None
+    res = await authenticated_client.profile.delete_package("1234567890987654321")
+    assert res is None
 
 
 @pytest.mark.asyncio
-async def test_delete_package_non_existing(aresponses):
+async def test_delete_package_non_existing(aresponses, authenticated_client):
     """Test deleting a non existing package."""
     aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
-    aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
         "post",
@@ -630,24 +597,13 @@ async def test_delete_package_non_existing(aresponses):
         aresponses.Response(text=load_fixture("delete_package_response.json"), status=200),
     )
 
-    async with aiohttp.ClientSession() as session:
-        with pytest.raises(InvalidTrackingNumberError):
-            client = Client(session=session)
-            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-            await client.profile.delete_package("1234567890987654321111")
+    with pytest.raises(InvalidTrackingNumberError):
+        await authenticated_client.profile.delete_package("1234567890987654321111")
 
 
 @pytest.mark.asyncio
-async def test_delete_package_error_response(aresponses):
+async def test_delete_package_error_response(aresponses, authenticated_client):
     """Test deleting a package with failed response."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -664,24 +620,13 @@ async def test_delete_package_error_response(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        with pytest.raises(RequestError):
-            client = Client(session=session)
-            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-            await client.profile.delete_package("1234567890987654321")
+    with pytest.raises(RequestError):
+        await authenticated_client.profile.delete_package("1234567890987654321")
 
 
 @pytest.mark.asyncio
-async def test_set_tag_type(aresponses):
+async def test_set_tag_type(aresponses, authenticated_client):
     """Test setting tag type."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -689,24 +634,13 @@ async def test_set_tag_type(aresponses):
         aresponses.Response(text=load_fixture("set_tag_type_response.json"), status=200),
     )
 
-    async with aiohttp.ClientSession() as session:
-        client = Client(session=session)
-        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-        res = await client.profile.set_tag_type("1234567890987654321", "0")
-        assert res is None
+    res = await authenticated_client.profile.set_tag_type("1234567890987654321", "0")
+    assert res is None
 
 
 @pytest.mark.asyncio
-async def test_set_tag_type_error_response(aresponses):
+async def test_set_tag_type_error_response(aresponses, authenticated_client):
     """Test setting tag type with failed response."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -717,24 +651,13 @@ async def test_set_tag_type_error_response(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        with pytest.raises(RequestError):
-            client = Client(session=session)
-            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-            await client.profile.set_tag_type("1234567890987654321", "0")
+    with pytest.raises(RequestError):
+        await authenticated_client.profile.set_tag_type("1234567890987654321", "0")
 
 
 @pytest.mark.asyncio
-async def test_set_carrier(aresponses):
+async def test_set_carrier(aresponses, authenticated_client):
     """Test setting carrier."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -742,24 +665,15 @@ async def test_set_carrier(aresponses):
         aresponses.Response(text=load_fixture("set_carrier_response.json"), status=200),
     )
 
-    async with aiohttp.ClientSession() as session:
-        client = Client(session=session)
-        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-        res = await client.profile.set_carrier("1234567890987654321", "100001", "0")
-        assert res is None
+    res = await authenticated_client.profile.set_carrier(
+        "1234567890987654321", "100001", "0"
+    )
+    assert res is None
 
 
 @pytest.mark.asyncio
-async def test_set_carrier_error_response(aresponses):
+async def test_set_carrier_error_response(aresponses, authenticated_client):
     """Test setting carrier with failed response."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -769,24 +683,15 @@ async def test_set_carrier_error_response(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        with pytest.raises(RequestError):
-            client = Client(session=session)
-            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-            await client.profile.set_carrier("1234567890987654321", "100001", "0")
+    with pytest.raises(RequestError):
+        await authenticated_client.profile.set_carrier(
+            "1234567890987654321", "100001", "0"
+        )
 
 
 @pytest.mark.asyncio
-async def test_track_info_by_id(aresponses):
+async def test_track_info_by_id(aresponses, authenticated_client):
     """Test getting track info by internal ID."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -796,12 +701,9 @@ async def test_track_info_by_id(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        client = Client(session=session)
-        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-        items = await client.profile.track_info_by_id("1234567890987654321")
-        assert len(items) == 1
-        assert items[0]["FTrackInfoId"] == "1234567890987654321"
+    items = await authenticated_client.profile.track_info_by_id("1234567890987654321")
+    assert len(items) == 1
+    assert items[0]["FTrackInfoId"] == "1234567890987654321"
 
 
 @pytest.mark.asyncio
@@ -813,16 +715,8 @@ async def test_track_info_by_id_empty():
 
 
 @pytest.mark.asyncio
-async def test_track_info_by_id_error_response(aresponses):
+async def test_track_info_by_id_error_response(aresponses, authenticated_client):
     """Test getting track info with failed response."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -832,24 +726,13 @@ async def test_track_info_by_id_error_response(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        with pytest.raises(RequestError):
-            client = Client(session=session)
-            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-            await client.profile.track_info_by_id("1234567890987654321")
+    with pytest.raises(RequestError):
+        await authenticated_client.profile.track_info_by_id("1234567890987654321")
 
 
 @pytest.mark.asyncio
-async def test_order_info_by_id(aresponses):
+async def test_order_info_by_id(aresponses, authenticated_client):
     """Test getting order info by internal ID."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -859,27 +742,16 @@ async def test_order_info_by_id(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        client = Client(session=session)
-        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-        order = await client.profile.order_info_by_id("1234567890987654321")
-        assert order["opn"] == "Acme"
-        assert order["ptoid"] == "123"
-        assert order["pt"] == "01"
-        assert order["otime"] == "2024-12-01"
+    order = await authenticated_client.profile.order_info_by_id("1234567890987654321")
+    assert order["opn"] == "Acme"
+    assert order["ptoid"] == "123"
+    assert order["pt"] == "01"
+    assert order["otime"] == "2024-12-01"
 
 
 @pytest.mark.asyncio
-async def test_order_info_by_id_error_response(aresponses):
+async def test_order_info_by_id_error_response(aresponses, authenticated_client):
     """Test getting order info with failed response."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -889,24 +761,13 @@ async def test_order_info_by_id_error_response(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        with pytest.raises(RequestError):
-            client = Client(session=session)
-            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-            await client.profile.order_info_by_id("1234567890987654321")
+    with pytest.raises(RequestError):
+        await authenticated_client.profile.order_info_by_id("1234567890987654321")
 
 
 @pytest.mark.asyncio
-async def test_save_order_info(aresponses):
+async def test_save_order_info(aresponses, authenticated_client):
     """Test saving order info."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -914,30 +775,19 @@ async def test_save_order_info(aresponses):
         aresponses.Response(text=load_fixture("save_order_info_response.json"), status=200),
     )
 
-    async with aiohttp.ClientSession() as session:
-        client = Client(session=session)
-        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-        res = await client.profile.save_order_info(
-            "1234567890987654321",
-            opn="Acme",
-            ptoid="123",
-            pt="01",
-            otime="2024-12-01",
-        )
-        assert res is None
+    res = await authenticated_client.profile.save_order_info(
+        "1234567890987654321",
+        opn="Acme",
+        ptoid="123",
+        pt="01",
+        otime="2024-12-01",
+    )
+    assert res is None
 
 
 @pytest.mark.asyncio
-async def test_save_order_info_error_response(aresponses):
+async def test_save_order_info_error_response(aresponses, authenticated_client):
     """Test saving order info with failed response."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
     aresponses.add(
         "buyer.17track.net",
         "/orderapi/call",
@@ -947,8 +797,7 @@ async def test_save_order_info_error_response(aresponses):
         ),
     )
 
-    async with aiohttp.ClientSession() as session:
-        with pytest.raises(RequestError):
-            client = Client(session=session)
-            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-            await client.profile.save_order_info("1234567890987654321", opn="Acme")
+    with pytest.raises(RequestError):
+        await authenticated_client.profile.save_order_info(
+            "1234567890987654321", opn="Acme"
+        )
