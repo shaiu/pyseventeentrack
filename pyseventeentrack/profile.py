@@ -74,7 +74,7 @@ class Profile:
         _LOGGER.debug("Packages response: %s", packages_resp)
 
         packages: List[Package] = []
-        for package in packages_resp.get("Json", []):
+        for package in (packages_resp or {}).get("Json") or []:
             event: dict = {}
             last_event_raw: str = package.get("FLastEvent")
             if last_event_raw:
@@ -111,7 +111,7 @@ class Profile:
         _LOGGER.debug("Summary response: %s", summary_resp)
 
         results: dict = {}
-        for kind in summary_resp.get("Json", {}).get("eitem", []):
+        for kind in ((summary_resp or {}).get("Json") or {}).get("eitem", []):
             key = PACKAGE_STATUS_MAP.get(kind["e"], "Unknown")
             value = kind["ec"]
             results[key] = value if key not in results else results[key] + value

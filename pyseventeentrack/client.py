@@ -1,5 +1,6 @@
 """Define a 17track.net client."""
 
+import logging
 from typing import Optional
 
 from aiohttp import ClientSession, ClientTimeout
@@ -7,6 +8,8 @@ from aiohttp.client_exceptions import ClientError
 
 from .errors import RequestError
 from .profile import Profile
+
+_LOGGER: logging.Logger = logging.getLogger(__name__)
 
 # from .track import Track
 
@@ -47,8 +50,20 @@ class Client:  # pylint: disable=too-few-public-methods
             async with session.request(
                 method, url, headers=headers, params=params, json=json
             ) as resp:
+                _LOGGER.debug(
+                    "Response from %s: status=%s, content_type=%s",
+                    url,
+                    resp.status,
+                    resp.content_type,
+                )
                 resp.raise_for_status()
+                raw: str = await resp.text()
+                _LOGGER.debug("Raw response body from %s: %r", url, raw)
                 data: dict = await resp.json(content_type=None)
+                if data is None:
+                    _LOGGER.warning(
+                        "Response from %s parsed as None; raw body was: %r", url, raw
+                    )
                 return data
         except ClientError as err:
             raise RequestError(f"Error requesting data from {url}: {err}") from err
