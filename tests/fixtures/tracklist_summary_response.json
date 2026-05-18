@@ -1,0 +1,20 @@
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total_pages": 2,
+    "status_counts": {
+      "InTransit": 2,
+      "Delivered": "1",
+      "Mystery": 3
+    },
+    "accepted": [
+      {
+        "id": "pkg-1",
+        "number": "PAGE1",
+        "package_status": "InTransit",
+        "latest_event_time": "2026-05-18T09:30:00+02:00"
+      }
+    ]
+  }
+}

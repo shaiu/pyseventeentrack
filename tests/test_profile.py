@@ -246,6 +246,27 @@ async def test_summary(aresponses):
 
 
 @pytest.mark.asyncio
+async def test_summary_uses_api_counts(aresponses):
+    """Test summary uses API aggregate counts when provided."""
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(
+            text=load_fixture("tracklist_summary_response.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        summary = await client.profile.summary()
+        assert summary["In Transit"] == 2
+        assert summary["Delivered"] == 1
+        assert summary["Unknown"] == 3
+        assert summary["Not Found"] == 0
+
+
+@pytest.mark.asyncio
 async def test_cookie_copy_to_api_domain_and_csrf_header():
     """Test copying login cookies to the API domain and CSRF header injection."""
     async with aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar(quote_cookie=False)) as session:

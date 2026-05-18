@@ -1,5 +1,6 @@
 """Define interaction with a user profile."""
 
+import asyncio
 from collections import Counter
 from datetime import datetime
 import logging
@@ -131,6 +132,144 @@ def _has_next_page(data: dict, page_no: int) -> bool:
     return False
 
 
+def _page_count(data: dict) -> int:
+    """Return the total page count advertised by tracklist metadata."""
+    for key in ("total_page", "total_pages", "page_count"):
+        value = data.get(key)
+        if isinstance(value, bool):
+            continue
+
+        try:
+            return max(1, int(value))
+        except (TypeError, ValueError):
+            continue
+
+    return 1
+
+
+def _empty_summary() -> dict:
+    """Return a zero-filled summary for known package statuses."""
+    return {status: 0 for status in PACKAGE_STATUS_MAP.values()}
+
+
+def _summary_status_name(status: object) -> Optional[str]:
+    """Return a pyseventeentrack summary status name."""
+    if isinstance(status, str):
+        if status in API_PACKAGE_STATUS_MAP:
+            return PACKAGE_STATUS_MAP[API_PACKAGE_STATUS_MAP[status]]
+
+        if status in PACKAGE_STATUS_MAP.values():
+            return status
+
+        try:
+            return PACKAGE_STATUS_MAP[int(status)]
+        except (KeyError, ValueError):
+            return "Unknown"
+
+    if isinstance(status, int):
+        return PACKAGE_STATUS_MAP.get(status, "Unknown")
+
+    return None
+
+
+def _summary_from_mapping(summary_data: dict) -> Optional[dict]:
+    """Return a status summary from API-provided mapping data."""
+    results = _empty_summary()
+    unknown_count = 0
+    found = False
+
+    for status, count in summary_data.items():
+        status_name = _summary_status_name(status)
+        if not status_name:
+            continue
+
+        try:
+            count_value = int(count)
+        except (TypeError, ValueError):
+            continue
+
+        found = True
+        if status_name == "Unknown":
+            unknown_count += count_value
+        else:
+            results[status_name] += count_value
+
+    if not found:
+        return None
+
+    if unknown_count:
+        results["Unknown"] = unknown_count
+
+    return results
+
+
+def _summary_from_items(summary_data: list) -> Optional[dict]:
+    """Return a status summary from API-provided list data."""
+    results = _empty_summary()
+    unknown_count = 0
+    found = False
+
+    for item in summary_data:
+        if not isinstance(item, dict):
+            continue
+
+        status_name = None
+        for status_key in ("package_status", "status", "state", "e"):
+            status_name = _summary_status_name(item.get(status_key))
+            if status_name:
+                break
+
+        if not status_name:
+            continue
+
+        count = None
+        for count_key in ("count", "total", "ec"):
+            count = item.get(count_key)
+            if count is not None:
+                break
+
+        try:
+            count_value = int(count)
+        except (TypeError, ValueError):
+            continue
+
+        found = True
+        if status_name == "Unknown":
+            unknown_count += count_value
+        else:
+            results[status_name] += count_value
+
+    if not found:
+        return None
+
+    if unknown_count:
+        results["Unknown"] = unknown_count
+
+    return results
+
+
+def _summary_from_tracklist_data(data: dict) -> Optional[dict]:
+    """Return a package summary when the API exposes aggregate counts."""
+    for key in ("summary", "status_summary", "status_counts", "package_status_counts"):
+        summary_data = data.get(key)
+        if isinstance(summary_data, dict):
+            return _summary_from_mapping(summary_data)
+
+        if isinstance(summary_data, list):
+            return _summary_from_items(summary_data)
+
+    return None
+
+
+def _packages_from_tracklist_data(data: dict) -> list:
+    """Return package dictionaries from tracklist response data."""
+    accepted = data.get("accepted")
+    if not isinstance(accepted, list):
+        return []
+
+    return [package for package in accepted if isinstance(package, dict)]
+
+
 class Profile:
     """Define a 17track.net profile manager."""
 
@@ -208,39 +347,69 @@ class Profile:
 
     async def summary(self, show_archived: bool = False) -> dict:
         """Get a quick summary of how many packages are in an account."""
+        tracklist_resp = await self._tracklist_page(1)
+        data = (tracklist_resp or {}).get("data")
+        if isinstance(data, dict):
+            summary = _summary_from_tracklist_data(data)
+            if summary is not None:
+                return summary
+
         summary = Counter(
             PACKAGE_STATUS_MAP.get(_package_status(package), "Unknown")
-            for package in await self._tracklist(show_archived=show_archived)
+            for package in await self._tracklist(
+                show_archived=show_archived, first_page_data=data
+            )
         )
 
         return {
+            **_empty_summary(),
             **{status: summary[status] for status in PACKAGE_STATUS_MAP.values()},
             **({"Unknown": summary["Unknown"]} if summary["Unknown"] else {}),
         }
 
-    async def _tracklist(self, show_archived: bool = False) -> list:
+    async def _tracklist(
+        self, show_archived: bool = False, first_page_data: Optional[dict] = None
+    ) -> list:
         """Get package data from the current 17TRACK track list API."""
-        page_no = 1
-        packages: list = []
-
-        while page_no <= TRACKLIST_MAX_PAGES:
-            tracklist_resp = await self._tracklist_page(page_no)
+        if first_page_data is None:
+            tracklist_resp = await self._tracklist_page(1)
             data = (tracklist_resp or {}).get("data")
-            if not isinstance(data, dict):
-                break
+        else:
+            data = first_page_data
 
-            accepted = data.get("accepted")
-            if not isinstance(accepted, list):
-                break
+        if not isinstance(data, dict):
+            return []
 
-            packages.extend(
-                package for package in accepted if isinstance(package, dict)
+        packages = _packages_from_tracklist_data(data)
+        total_pages = min(_page_count(data), TRACKLIST_MAX_PAGES)
+        if total_pages > 1:
+            pages = await asyncio.gather(
+                *(self._tracklist_page(page_no) for page_no in range(2, total_pages + 1))
             )
+            for tracklist_resp in pages:
+                page_data = (tracklist_resp or {}).get("data")
+                if isinstance(page_data, dict):
+                    packages.extend(_packages_from_tracklist_data(page_data))
 
+        if total_pages == 1:
+            page_no = 1
             if not _has_next_page(data, page_no):
-                break
+                if show_archived:
+                    return packages
 
-            page_no += 1
+                return [package for package in packages if not _is_archived(package)]
+
+            while page_no < TRACKLIST_MAX_PAGES:
+                page_no += 1
+                tracklist_resp = await self._tracklist_page(page_no)
+                page_data = (tracklist_resp or {}).get("data")
+                if not isinstance(page_data, dict):
+                    break
+
+                packages.extend(_packages_from_tracklist_data(page_data))
+
+                if not _has_next_page(page_data, page_no):
+                    break
 
         if show_archived:
             return packages
