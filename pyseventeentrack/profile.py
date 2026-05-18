@@ -89,7 +89,8 @@ def _parse_latest_event_time(value: Optional[str], tz: str) -> str:
         return ""
 
     try:
-        timestamp = datetime.fromisoformat(value)
+        normalized_value = value.replace("Z", "+00:00") if value.endswith("Z") else value
+        timestamp = datetime.fromisoformat(normalized_value)
     except ValueError:
         return value
 
