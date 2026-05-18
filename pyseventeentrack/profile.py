@@ -25,6 +25,7 @@ API_URL_USER: str = "https://user.17track.net/user-api/v1/sign-in-by-password"
 TRACKLIST_ORDER_BY_REGISTER_TIME_ASC: str = "11"
 TRACKLIST_TIME_ZONE_OFFSET: int = 0
 TRACKLIST_MAX_PAGES: int = 100
+TRACKLIST_MAX_CONCURRENT_PAGES: int = 5
 
 API_PACKAGE_STATUS_MAP = {
     "NotFound": 0,
@@ -307,7 +308,7 @@ class Profile:
         package_state: Union[int, str] = "",
         show_archived: bool = False,
         tz: str = "UTC",
-    ) -> list:
+    ) -> List[Package]:
         """Get the list of packages associated with the account."""
         package_tz = _normalize_timezone(tz)
         packages: List[Package] = []
@@ -383,8 +384,14 @@ class Profile:
         packages = _packages_from_tracklist_data(data)
         total_pages = min(_page_count(data), TRACKLIST_MAX_PAGES)
         if total_pages > 1:
+            semaphore = asyncio.Semaphore(TRACKLIST_MAX_CONCURRENT_PAGES)
+
+            async def fetch_page(page_no: int) -> dict:
+                async with semaphore:
+                    return await self._tracklist_page(page_no)
+
             pages = await asyncio.gather(
-                *(self._tracklist_page(page_no) for page_no in range(2, total_pages + 1))
+                *(fetch_page(page_no) for page_no in range(2, total_pages + 1))
             )
             for tracklist_resp in pages:
                 page_data = (tracklist_resp or {}).get("data")
