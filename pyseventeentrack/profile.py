@@ -398,14 +398,8 @@ class Profile:
                 if isinstance(page_data, dict):
                     packages.extend(_packages_from_tracklist_data(page_data))
 
-        if total_pages == 1:
+        if total_pages == 1 and _has_next_page(data, 1):
             page_no = 1
-            if not _has_next_page(data, page_no):
-                if show_archived:
-                    return packages
-
-                return [package for package in packages if not _is_archived(package)]
-
             while page_no < TRACKLIST_MAX_PAGES:
                 page_no += 1
                 tracklist_resp = await self._tracklist_page(page_no)
@@ -417,7 +411,6 @@ class Profile:
 
                 if not _has_next_page(page_data, page_no):
                     break
-
         if show_archived:
             return packages
 
