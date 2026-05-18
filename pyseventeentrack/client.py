@@ -8,7 +8,7 @@ from aiohttp.client_exceptions import ClientError
 from yarl import URL
 
 from .errors import RequestError
-from .profile import API_URL_TRACKLIST, API_URL_USER, Profile
+from .profile import API_URL_BUYER, API_URL_TRACKLIST, API_URL_USER, Profile
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -32,25 +32,28 @@ class Client:  # pylint: disable=too-few-public-methods
         # This is disabled until a workaround can be found:
         # self.track = Track(self._request)
 
-    def _copy_cookies_to_api_domain(self, session: ClientSession) -> None:
-        """Copy login cookies to the current API domain.
+    def _copy_cookies_to_api_domains(self, session: ClientSession) -> None:
+        """Copy login cookies to the authenticated API domains.
 
         The login endpoint (user.17track.net) may set cookies without a Domain
         attribute, which means they are only sent back to user.17track.net per
-        RFC 6265. The track API lives on api.17track.net and needs the same
-        session cookies. This method copies them across.
+        RFC 6265. The track and buyer APIs need the same session cookies. This
+        method copies them across.
         """
         login_url = URL(API_URL_USER)
-        api_url = URL(API_URL_TRACKLIST)
         login_cookies = session.cookie_jar.filter_cookies(login_url)
         if login_cookies:
-            session.cookie_jar.update_cookies(login_cookies, api_url)
-            _LOGGER.debug(
-                "Copied %d cookie(s) from %s to %s",
-                len(login_cookies),
-                login_url.host,
-                api_url.host,
-            )
+            cookie_values = {
+                name: morsel.value for name, morsel in login_cookies.items()
+            }
+            for target_url in (URL(API_URL_TRACKLIST), URL(API_URL_BUYER)):
+                session.cookie_jar.update_cookies(cookie_values, target_url)
+                _LOGGER.debug(
+                    "Copied %d cookie(s) from %s to %s",
+                    len(cookie_values),
+                    login_url.host,
+                    target_url.host,
+                )
 
     def _headers_for_url(self, url: str, session: ClientSession) -> dict:
         """Return browser-like headers expected by the 17TRACK web API."""
@@ -79,11 +82,6 @@ class Client:  # pylint: disable=too-few-public-methods
             headers["Sec-Fetch-Site"] = "same-site"
 
             cookies = session.cookie_jar.filter_cookies(tracklist_url)
-            if cookies:
-                headers["Cookie"] = "; ".join(
-                    f"{name}={morsel.value}" for name, morsel in cookies.items()
-                )
-
             csrf_token = cookies.get("csrf_token")
             if csrf_token:
                 headers["x-csrf-token"] = csrf_token.value
@@ -138,7 +136,7 @@ class Client:  # pylint: disable=too-few-public-methods
                 # After a successful login request, copy cookies to the API
                 # domain so that subsequent API calls are authenticated.
                 if url == API_URL_USER and session.cookie_jar:
-                    self._copy_cookies_to_api_domain(session)
+                    self._copy_cookies_to_api_domains(session)
 
                 return data
         except ClientError as err:

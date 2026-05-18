@@ -1,0 +1,15 @@
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total_pages": 2,
+    "accepted": [
+      {
+        "id": "pkg-2",
+        "number": "PAGE2",
+        "package_status": "Delivered",
+        "latest_event_time": "2026-05-18T10:30:00+02:00"
+      }
+    ]
+  }
+}

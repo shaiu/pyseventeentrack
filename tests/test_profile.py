@@ -11,7 +11,7 @@ from pyseventeentrack.errors import (
     RequestError,
     SeventeenTrackError,
 )
-from pyseventeentrack.profile import API_URL_TRACKLIST, API_URL_USER
+from pyseventeentrack.profile import API_URL_BUYER, API_URL_TRACKLIST, API_URL_USER
 from .common import TEST_EMAIL, TEST_PASSWORD, load_fixture
 
 
@@ -220,11 +220,15 @@ async def test_cookie_copy_to_api_domain_and_csrf_header():
             {"sessionid": "abc123", "csrf_token": "csrf123"}, URL(API_URL_USER)
         )
 
-        client._copy_cookies_to_api_domain(session)  # pylint: disable=protected-access
+        client._copy_cookies_to_api_domains(session)  # pylint: disable=protected-access
 
         api_cookies = session.cookie_jar.filter_cookies(URL(API_URL_TRACKLIST))
         assert api_cookies["sessionid"].value == "abc123"
         assert api_cookies["csrf_token"].value == "csrf123"
+
+        buyer_cookies = session.cookie_jar.filter_cookies(URL(API_URL_BUYER))
+        assert buyer_cookies["sessionid"].value == "abc123"
+        assert buyer_cookies["csrf_token"].value == "csrf123"
 
         headers = client._headers_for_url(  # pylint: disable=protected-access
             API_URL_TRACKLIST, session
@@ -232,7 +236,6 @@ async def test_cookie_copy_to_api_domain_and_csrf_header():
         assert headers["Accept"] == "*/*"
         assert headers["Origin"] == "https://admin.17track.net"
         assert headers["Referer"] == "https://admin.17track.net/"
-        assert headers["Cookie"] == "sessionid=abc123; csrf_token=csrf123"
         assert headers["x-csrf-token"] == "csrf123"
 
 
@@ -305,6 +308,66 @@ async def test_packages_show_archived(aresponses):
         assert packages[1].tracking_number == "LP00432912409987"
         assert packages[1].friendly_name == "Book"
         assert packages[1].status == "Delivered"
+
+
+@pytest.mark.asyncio
+async def test_packages_parses_metadata(aresponses):
+    """Test parsing package metadata when the new API exposes it."""
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        packages = await client.profile.packages()
+        assert packages[0].destination_country == "France"
+        assert packages[0].origin_country == "China"
+        assert packages[0].package_type == "Small Registered Package"
+
+
+@pytest.mark.asyncio
+async def test_packages_invalid_timezone_defaults_to_utc(aresponses):
+    """Test invalid timezone names do not crash package parsing."""
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        packages = await client.profile.packages(tz="Not/AZone")
+        assert packages[0].timestamp.isoformat() == "2026-05-18T07:30:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_packages_fetches_paginated_results(aresponses):
+    """Test tracklist pagination when the API advertises multiple pages."""
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(
+            text=load_fixture("tracklist_page_1_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(
+            text=load_fixture("tracklist_page_2_response.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        packages = await client.profile.packages()
+        assert [package.tracking_number for package in packages] == ["PAGE1", "PAGE2"]
 
 
 @pytest.mark.asyncio

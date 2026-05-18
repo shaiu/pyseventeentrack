@@ -11,6 +11,9 @@
         "remark": "Fallback name",
         "latest_event_info": "Arrived at destination facility",
         "latest_event_time": "2026-05-18T09:30:00+02:00",
+        "destination_country": 605,
+        "origin_country": 301,
+        "package_type": 1,
         "archive": false
       },
       {

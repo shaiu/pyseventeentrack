@@ -5,7 +5,7 @@ from datetime import datetime
 import logging
 from typing import Callable, Coroutine, List, Optional, Union
 
-from pytz import timezone
+from pytz import UnknownTimeZoneError, timezone
 
 from .encrypt import rsa_encrypt
 from .errors import (
@@ -34,6 +34,19 @@ API_PACKAGE_STATUS_MAP = {
     "Delivered": 40,
     "Alert": 50,
 }
+
+
+def _package_int(package: dict, *keys: str) -> int:
+    """Return an integer package value from the first matching key."""
+    for key in keys:
+        value = package.get(key)
+        if isinstance(value, bool):
+            continue
+
+        if isinstance(value, int):
+            return value
+
+    return 0
 
 
 def _is_archived(package: dict) -> bool:
@@ -78,7 +91,41 @@ def _parse_latest_event_time(value: Optional[str], tz: str) -> str:
     if timestamp.tzinfo is None:
         return timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
-    return timestamp.astimezone(timezone(tz)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        target_tz = timezone(tz)
+    except UnknownTimeZoneError:
+        target_tz = timezone("UTC")
+
+    return timestamp.astimezone(target_tz).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _normalize_timezone(tz: str) -> str:
+    """Return a timezone name safe to pass to Package."""
+    try:
+        timezone(tz)
+    except UnknownTimeZoneError:
+        return "UTC"
+
+    return tz
+
+
+def _has_next_page(data: dict, page_no: int) -> bool:
+    """Return whether tracklist response metadata advertises another page."""
+    for key in ("has_next_page", "has_more"):
+        value = data.get(key)
+        if isinstance(value, bool):
+            return value
+
+    next_page = data.get("next_page")
+    if isinstance(next_page, int):
+        return next_page > page_no
+
+    for key in ("total_page", "total_pages", "page_count"):
+        value = data.get(key)
+        if isinstance(value, int):
+            return page_no < value
+
+    return False
 
 
 class Profile:
@@ -120,6 +167,7 @@ class Profile:
         tz: str = "UTC",
     ) -> list:
         """Get the list of packages associated with the account."""
+        package_tz = _normalize_timezone(tz)
         packages: List[Package] = []
         for package in await self._tracklist(show_archived=show_archived):
             tracking_number = _package_string(package, "number")
@@ -135,15 +183,21 @@ class Profile:
             )
             kwargs: dict = {
                 "id": package.get("id") or package.get("track_id"),
-                "destination_country": 0,
+                "destination_country": _package_int(
+                    package, "destination_country", "destination_country_id"
+                ),
                 "friendly_name": friendly_name,
                 "info_text": _package_string(package, "latest_event_info"),
                 "timestamp": _parse_latest_event_time(
-                    _package_string(package, "latest_event_time"), tz
+                    _package_string(package, "latest_event_time"), package_tz
                 ),
-                "tz": tz,
-                "origin_country": 0,
-                "package_type": 0,
+                "tz": package_tz,
+                "origin_country": _package_int(
+                    package, "origin_country", "origin_country_id"
+                ),
+                "package_type": _package_int(
+                    package, "package_type", "track_state_type"
+                ),
                 "status": status,
             }
             packages.append(Package(tracking_number, **kwargs))
@@ -163,11 +217,40 @@ class Profile:
 
     async def _tracklist(self, show_archived: bool = False) -> list:
         """Get package data from the current 17TRACK track list API."""
+        page_no = 1
+        packages: list = []
+
+        while True:
+            tracklist_resp = await self._tracklist_page(page_no)
+            data = (tracklist_resp or {}).get("data")
+            if not isinstance(data, dict):
+                break
+
+            accepted = data.get("accepted")
+            if not isinstance(accepted, list):
+                break
+
+            packages.extend(
+                package for package in accepted if isinstance(package, dict)
+            )
+
+            if not _has_next_page(data, page_no):
+                break
+
+            page_no += 1
+
+        if show_archived:
+            return packages
+
+        return [package for package in packages if not _is_archived(package)]
+
+    async def _tracklist_page(self, page_no: int) -> dict:
+        """Get a package data page from the current 17TRACK track list API."""
         tracklist_resp: dict = await self._request(
             "post",
             API_URL_TRACKLIST,
             json={
-                "page_no": 1,
+                "page_no": page_no,
                 "order_by": TRACKLIST_ORDER_BY_REGISTER_TIME_ASC,
                 "timeZoneOffset": TRACKLIST_TIME_ZONE_OFFSET,
             },
@@ -187,19 +270,7 @@ class Profile:
                 f"17TRACK API error (Code: {code}, Message: {message})"
             )
 
-        data = (tracklist_resp or {}).get("data")
-        if not isinstance(data, dict):
-            return []
-
-        accepted = data.get("accepted")
-        if not isinstance(accepted, list):
-            return []
-
-        packages = [package for package in accepted if isinstance(package, dict)]
-        if show_archived:
-            return packages
-
-        return [package for package in packages if not _is_archived(package)]
+        return tracklist_resp
 
     async def add_package(
         self, tracking_number: str, friendly_name: Optional[str] = None
