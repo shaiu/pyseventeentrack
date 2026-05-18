@@ -355,6 +355,7 @@ class Profile:
             if summary is not None:
                 return summary
 
+        _LOGGER.debug("API did not provide summary; calculating from package list")
         summary = Counter(
             PACKAGE_STATUS_MAP.get(_package_status(package), "Unknown")
             for package in await self._tracklist(
