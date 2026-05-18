@@ -3,18 +3,22 @@
 import logging
 from typing import Optional
 
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import ClientSession, ClientTimeout, CookieJar
 from aiohttp.client_exceptions import ClientError
 from yarl import URL
 
 from .errors import RequestError
-from .profile import API_URL_BUYER, API_URL_USER, Profile
+from .profile import API_URL_TRACKLIST, API_URL_USER, Profile
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 # from .track import Track
 
 DEFAULT_TIMEOUT: int = 10
+BROWSER_USER_AGENT: str = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Safari/537.36"
+)
 
 
 class Client:  # pylint: disable=too-few-public-methods
@@ -28,25 +32,63 @@ class Client:  # pylint: disable=too-few-public-methods
         # This is disabled until a workaround can be found:
         # self.track = Track(self._request)
 
-    def _copy_cookies_to_buyer_domain(self, session: ClientSession) -> None:
-        """Copy login cookies to the buyer API domain.
+    def _copy_cookies_to_api_domain(self, session: ClientSession) -> None:
+        """Copy login cookies to the current API domain.
 
         The login endpoint (user.17track.net) may set cookies without a Domain
         attribute, which means they are only sent back to user.17track.net per
-        RFC 6265. The buyer API lives on buyer.17track.net and needs the same
+        RFC 6265. The track API lives on api.17track.net and needs the same
         session cookies. This method copies them across.
         """
         login_url = URL(API_URL_USER)
-        buyer_url = URL(API_URL_BUYER)
+        api_url = URL(API_URL_TRACKLIST)
         login_cookies = session.cookie_jar.filter_cookies(login_url)
         if login_cookies:
-            session.cookie_jar.update_cookies(login_cookies, buyer_url)
+            session.cookie_jar.update_cookies(login_cookies, api_url)
             _LOGGER.debug(
                 "Copied %d cookie(s) from %s to %s",
                 len(login_cookies),
                 login_url.host,
-                buyer_url.host,
+                api_url.host,
             )
+
+    def _headers_for_url(self, url: str, session: ClientSession) -> dict:
+        """Return browser-like headers expected by the 17TRACK web API."""
+        request_url = URL(url)
+        tracklist_url = URL(API_URL_TRACKLIST)
+        headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Content-Type": "application/json;charset=UTF-8",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "User-Agent": BROWSER_USER_AGENT,
+            "X-Requested-With": "XMLHttpRequest",
+        }
+
+        if request_url.host == URL(API_URL_USER).host:
+            headers["Origin"] = "https://www.17track.net"
+            headers["Referer"] = "https://www.17track.net/"
+            headers["Sec-Fetch-Site"] = "same-site"
+
+        if request_url.host == tracklist_url.host:
+            headers["Accept"] = "*/*"
+            headers["Content-Type"] = "application/json"
+            headers["Origin"] = "https://admin.17track.net"
+            headers["Referer"] = "https://admin.17track.net/"
+            headers["Sec-Fetch-Site"] = "same-site"
+
+            cookies = session.cookie_jar.filter_cookies(tracklist_url)
+            if cookies:
+                headers["Cookie"] = "; ".join(
+                    f"{name}={morsel.value}" for name, morsel in cookies.items()
+                )
+
+            csrf_token = cookies.get("csrf_token")
+            if csrf_token:
+                headers["x-csrf-token"] = csrf_token.value
+
+        return headers
 
     async def _request(  # pylint: disable=too-many-arguments
         self,
@@ -63,13 +105,20 @@ class Client:  # pylint: disable=too-few-public-methods
         if use_running_session:
             session = self._session
         else:
-            session = ClientSession(timeout=ClientTimeout(total=DEFAULT_TIMEOUT))
+            session = ClientSession(
+                cookie_jar=CookieJar(quote_cookie=False),
+                timeout=ClientTimeout(total=DEFAULT_TIMEOUT),
+            )
 
         assert session
 
         try:
+            request_headers = self._headers_for_url(url, session)
+            if headers:
+                request_headers.update(headers)
+
             async with session.request(
-                method, url, headers=headers, params=params, json=json
+                method, url, headers=request_headers, params=params, json=json
             ) as resp:
                 _LOGGER.debug(
                     "Response from %s: status=%s, content_type=%s",
@@ -86,10 +135,10 @@ class Client:  # pylint: disable=too-few-public-methods
                         "Response from %s parsed as None; raw body was: %r", url, raw
                     )
 
-                # After a successful login request, copy cookies to the buyer
+                # After a successful login request, copy cookies to the API
                 # domain so that subsequent API calls are authenticated.
                 if url == API_URL_USER and session.cookie_jar:
-                    self._copy_cookies_to_buyer_domain(session)
+                    self._copy_cookies_to_api_domain(session)
 
                 return data
         except ClientError as err:

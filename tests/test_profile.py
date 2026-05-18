@@ -2,9 +2,16 @@
 
 import aiohttp
 import pytest
+from yarl import URL
 
 from pyseventeentrack import Client
-from pyseventeentrack.errors import InvalidTrackingNumberError, RequestError
+from pyseventeentrack.errors import (
+    InvalidTrackingNumberError,
+    NotLoggedInError,
+    RequestError,
+    SeventeenTrackError,
+)
+from pyseventeentrack.profile import API_URL_TRACKLIST, API_URL_USER
 from .common import TEST_EMAIL, TEST_PASSWORD, load_fixture
 
 
@@ -73,21 +80,21 @@ async def test_packages(aresponses):
         ),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
 
     async with aiohttp.ClientSession() as session:
         client = Client(session=session)
         await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         packages = await client.profile.packages()
-        assert len(packages) == 5
-        assert packages[0].location == "Paris"
-        assert packages[1].location == "Spain"
-        assert packages[2].location == "Milano Italy"
-        assert packages[3].location == ""
+        assert len(packages) == 2
+        assert packages[0].friendly_name == "Office supplies"
+        assert packages[0].info_text == "Arrived at destination facility"
+        assert packages[0].tracking_number == "1234567890987654321"
+        assert packages[1].status == "Not Found"
 
 
 @pytest.mark.asyncio
@@ -102,11 +109,11 @@ async def test_packages_with_unknown_state(aresponses):
         ),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
         aresponses.Response(
-            text=load_fixture("packages_response_with_unknown_state.json"), status=200
+            text=load_fixture("tracklist_response.json"), status=200
         ),
     )
 
@@ -114,10 +121,9 @@ async def test_packages_with_unknown_state(aresponses):
         client = Client(session=session)
         await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         packages = await client.profile.packages()
-        assert len(packages) == 3
-        assert packages[0].status == "Not Found"
-        assert packages[1].status == "In Transit"
-        assert packages[2].status == "Unknown"
+        assert len(packages) == 2
+        assert packages[0].status == "In Transit"
+        assert packages[1].status == "Not Found"
 
 
 @pytest.mark.asyncio
@@ -132,20 +138,19 @@ async def test_packages_default_timezone(aresponses):
         ),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
 
     async with aiohttp.ClientSession() as session:
         client = Client(session=session)
         await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         packages = await client.profile.packages()
-        assert len(packages) == 5
-        assert packages[0].timestamp.isoformat() == "2018-04-23T12:02:00+00:00"
-        assert packages[1].timestamp.isoformat() == "2019-02-26T01:05:34+00:00"
-        assert packages[2].timestamp.isoformat() == "1970-01-01T00:00:00+00:00"
+        assert len(packages) == 2
+        assert packages[0].timestamp.isoformat() == "2026-05-18T07:30:00+00:00"
+        assert packages[1].timestamp.isoformat() == "1970-01-01T00:00:00+00:00"
 
 
 @pytest.mark.asyncio
@@ -160,20 +165,19 @@ async def test_packages_user_defined_timezone(aresponses):
         ),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
 
     async with aiohttp.ClientSession() as session:
         client = Client(session=session)
         await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         packages = await client.profile.packages(tz="Asia/Jakarta")
-        assert len(packages) == 5
-        assert packages[0].timestamp.isoformat() == "2018-04-23T05:02:00+00:00"
-        assert packages[1].timestamp.isoformat() == "2019-02-25T18:05:34+00:00"
-        assert packages[2].timestamp.isoformat() == "1970-01-01T00:00:00+00:00"
+        assert len(packages) == 2
+        assert packages[0].timestamp.isoformat() == "2026-05-18T07:30:00+00:00"
+        assert packages[1].timestamp.isoformat() == "1970-01-01T00:00:00+00:00"
 
 
 @pytest.mark.asyncio
@@ -188,10 +192,10 @@ async def test_summary(aresponses):
         ),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("summary_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
 
     async with aiohttp.ClientSession() as session:
@@ -200,12 +204,107 @@ async def test_summary(aresponses):
         summary = await client.profile.summary()
         assert summary["Delivered"] == 0
         assert summary["Expired"] == 0
-        assert summary["In Transit"] == 6
-        assert summary["Not Found"] == 2
+        assert summary["In Transit"] == 1
+        assert summary["Not Found"] == 1
         assert summary["Ready to be Picked Up"] == 0
         assert summary["Alert"] == 0
         assert summary["Undelivered"] == 0
-        assert summary["Unknown"] == 3
+
+
+@pytest.mark.asyncio
+async def test_cookie_copy_to_api_domain_and_csrf_header():
+    """Test copying login cookies to the API domain and CSRF header injection."""
+    async with aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar(quote_cookie=False)) as session:
+        client = Client(session=session)
+        session.cookie_jar.update_cookies(
+            {"sessionid": "abc123", "csrf_token": "csrf123"}, URL(API_URL_USER)
+        )
+
+        client._copy_cookies_to_api_domain(session)  # pylint: disable=protected-access
+
+        api_cookies = session.cookie_jar.filter_cookies(URL(API_URL_TRACKLIST))
+        assert api_cookies["sessionid"].value == "abc123"
+        assert api_cookies["csrf_token"].value == "csrf123"
+
+        headers = client._headers_for_url(  # pylint: disable=protected-access
+            API_URL_TRACKLIST, session
+        )
+        assert headers["Accept"] == "*/*"
+        assert headers["Origin"] == "https://admin.17track.net"
+        assert headers["Referer"] == "https://admin.17track.net/"
+        assert headers["Cookie"] == "sessionid=abc123; csrf_token=csrf123"
+        assert headers["x-csrf-token"] == "csrf123"
+
+
+@pytest.mark.asyncio
+async def test_packages_not_logged_in(aresponses):
+    """Test that tracklist code -6 raises NotLoggedInError."""
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(
+            text=load_fixture("tracklist_not_logged_in_response.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        with pytest.raises(NotLoggedInError):
+            await client.profile.packages()
+
+
+@pytest.mark.asyncio
+async def test_packages_non_zero_error(aresponses):
+    """Test that non-zero tracklist codes raise a general error."""
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(text=load_fixture("tracklist_error_response.json"), status=200),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        with pytest.raises(SeventeenTrackError):
+            await client.profile.packages()
+
+
+@pytest.mark.asyncio
+async def test_packages_filters_package_state_zero(aresponses):
+    """Test package_state filtering, including package_state=0."""
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        packages = await client.profile.packages(package_state=0)
+        assert len(packages) == 1
+        assert packages[0].tracking_number == "UNKNOWNSTATUS"
+        assert packages[0].status == "Not Found"
+
+
+@pytest.mark.asyncio
+async def test_packages_show_archived(aresponses):
+    """Test show_archived includes packages marked with archive."""
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        packages = await client.profile.packages(show_archived=True)
+        assert len(packages) == 3
+        assert packages[1].tracking_number == "LP00432912409987"
+        assert packages[1].friendly_name == "Book"
+        assert packages[1].status == "Delivered"
 
 
 @pytest.mark.asyncio
@@ -250,10 +349,10 @@ async def test_add_new_package_with_friendly_name(aresponses):
         aresponses.Response(text=load_fixture("add_package_response.json"), status=200),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
     aresponses.add(
         "buyer.17track.net",
@@ -288,10 +387,10 @@ async def test_add_new_package_with_friendly_name_not_found(aresponses):
         aresponses.Response(text=load_fixture("add_package_response.json"), status=200),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
     aresponses.add(
         "buyer.17track.net",
@@ -327,10 +426,10 @@ async def test_add_new_package_with_friendly_name_error_response(aresponses):
         aresponses.Response(text=load_fixture("add_package_response.json"), status=200),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
     aresponses.add(
         "buyer.17track.net",
@@ -387,10 +486,10 @@ async def test_archive_package(aresponses):
         ),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
     aresponses.add(
         "buyer.17track.net",
@@ -420,10 +519,10 @@ async def test_archive_package_non_existing(aresponses):
         ),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
     aresponses.add(
         "buyer.17track.net",
@@ -453,10 +552,10 @@ async def test_archive_package_error_response(aresponses):
         ),
     )
     aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
         "post",
-        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
     )
     aresponses.add(
         "buyer.17track.net",
