@@ -363,6 +363,27 @@ async def test_packages_parses_metadata(aresponses):
 
 
 @pytest.mark.asyncio
+async def test_packages_casts_string_and_int_values(aresponses):
+    """Test package helpers cast API values into the expected types."""
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(
+            text=load_fixture("tracklist_cast_values_response.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        packages = await client.profile.packages()
+        assert packages[0].tracking_number == "1234567890"
+        assert packages[0].destination_country == "France"
+        assert packages[0].origin_country == "China"
+        assert packages[0].package_type == "Small Registered Package"
+
+
+@pytest.mark.asyncio
 async def test_packages_invalid_timezone_defaults_to_utc(aresponses):
     """Test invalid timezone names do not crash package parsing."""
     aresponses.add(

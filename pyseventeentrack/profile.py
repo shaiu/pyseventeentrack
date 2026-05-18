@@ -41,11 +41,13 @@ def _package_int(package: dict, *keys: str) -> int:
     """Return an integer package value from the first matching key."""
     for key in keys:
         value = package.get(key)
-        if isinstance(value, bool):
+        if value is None or isinstance(value, bool):
             continue
 
-        if isinstance(value, int):
-            return value
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
 
     return 0
 
@@ -64,8 +66,8 @@ def _is_archived(package: dict) -> bool:
 def _package_string(package: dict, key: str) -> Optional[str]:
     """Return a string package value."""
     value = package.get(key)
-    if isinstance(value, str):
-        return value
+    if value is not None:
+        return str(value)
 
     return None
 

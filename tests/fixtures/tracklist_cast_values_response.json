@@ -1,0 +1,17 @@
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "accepted": [
+      {
+        "id": "pkg-1",
+        "number": 1234567890,
+        "package_status": "InTransit",
+        "latest_event_time": "2026-05-18T09:30:00+02:00",
+        "destination_country": "605",
+        "origin_country": "301",
+        "package_type": "1"
+      }
+    ]
+  }
+}
