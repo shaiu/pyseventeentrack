@@ -4,6 +4,7 @@ import aiohttp
 import pytest
 from yarl import URL
 
+import pyseventeentrack.profile as profile_module
 from pyseventeentrack import Client
 from pyseventeentrack.errors import (
     InvalidTrackingNumberError,
@@ -69,6 +70,36 @@ async def test_no_explicit_session(aresponses):
 
 
 @pytest.mark.asyncio
+async def test_no_explicit_session_keeps_login_cookies(aresponses):
+    """Test temporary sessions share login cookies across requests."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            headers={"Set-Cookie": "sessionid=abc123; Path=/"},
+            text=load_fixture("authentication_success_response.json"),
+            status=200,
+        ),
+    )
+    aresponses.add(
+        "api.17track.net",
+        "/track/v2.4/gettracklist",
+        "post",
+        aresponses.Response(text=load_fixture("tracklist_response.json"), status=200),
+    )
+
+    client = Client()
+    assert await client.profile.login(TEST_EMAIL, TEST_PASSWORD) is True
+    assert (
+        client._cookie_jar.filter_cookies(URL(API_URL_TRACKLIST))["sessionid"].value  # pylint: disable=protected-access
+        == "abc123"
+    )
+    packages = await client.profile.packages()
+    assert len(packages) == 3
+
+
+@pytest.mark.asyncio
 async def test_packages(aresponses):
     """Test getting packages."""
     aresponses.add(
@@ -90,11 +121,12 @@ async def test_packages(aresponses):
         client = Client(session=session)
         await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         packages = await client.profile.packages()
-        assert len(packages) == 2
+        assert len(packages) == 3
         assert packages[0].friendly_name == "Office supplies"
         assert packages[0].info_text == "Arrived at destination facility"
         assert packages[0].tracking_number == "1234567890987654321"
-        assert packages[1].status == "Not Found"
+        assert packages[1].status == "Unknown"
+        assert packages[2].status == "Not Found"
 
 
 @pytest.mark.asyncio
@@ -121,9 +153,10 @@ async def test_packages_with_unknown_state(aresponses):
         client = Client(session=session)
         await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         packages = await client.profile.packages()
-        assert len(packages) == 2
+        assert len(packages) == 3
         assert packages[0].status == "In Transit"
-        assert packages[1].status == "Not Found"
+        assert packages[1].status == "Unknown"
+        assert packages[2].status == "Not Found"
 
 
 @pytest.mark.asyncio
@@ -148,7 +181,7 @@ async def test_packages_default_timezone(aresponses):
         client = Client(session=session)
         await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         packages = await client.profile.packages()
-        assert len(packages) == 2
+        assert len(packages) == 3
         assert packages[0].timestamp.isoformat() == "2026-05-18T07:30:00+00:00"
         assert packages[1].timestamp.isoformat() == "1970-01-01T00:00:00+00:00"
 
@@ -175,7 +208,7 @@ async def test_packages_user_defined_timezone(aresponses):
         client = Client(session=session)
         await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         packages = await client.profile.packages(tz="Asia/Jakarta")
-        assert len(packages) == 2
+        assert len(packages) == 3
         assert packages[0].timestamp.isoformat() == "2026-05-18T07:30:00+00:00"
         assert packages[1].timestamp.isoformat() == "1970-01-01T00:00:00+00:00"
 
@@ -209,6 +242,7 @@ async def test_summary(aresponses):
         assert summary["Ready to be Picked Up"] == 0
         assert summary["Alert"] == 0
         assert summary["Undelivered"] == 0
+        assert summary["Unknown"] == 1
 
 
 @pytest.mark.asyncio
@@ -287,7 +321,7 @@ async def test_packages_filters_package_state_zero(aresponses):
         client = Client(session=session)
         packages = await client.profile.packages(package_state=0)
         assert len(packages) == 1
-        assert packages[0].tracking_number == "UNKNOWNSTATUS"
+        assert packages[0].tracking_number == "NOTFOUNDSTATUS"
         assert packages[0].status == "Not Found"
 
 
@@ -304,7 +338,7 @@ async def test_packages_show_archived(aresponses):
     async with aiohttp.ClientSession() as session:
         client = Client(session=session)
         packages = await client.profile.packages(show_archived=True)
-        assert len(packages) == 3
+        assert len(packages) == 4
         assert packages[1].tracking_number == "LP00432912409987"
         assert packages[1].friendly_name == "Book"
         assert packages[1].status == "Delivered"
@@ -368,6 +402,27 @@ async def test_packages_fetches_paginated_results(aresponses):
         client = Client(session=session)
         packages = await client.profile.packages()
         assert [package.tracking_number for package in packages] == ["PAGE1", "PAGE2"]
+
+
+@pytest.mark.asyncio
+async def test_packages_pagination_safety_limit(aresponses, monkeypatch):
+    """Test pagination stops at the configured safety limit."""
+    monkeypatch.setattr(profile_module, "TRACKLIST_MAX_PAGES", 2)
+    for _ in range(2):
+        aresponses.add(
+            "api.17track.net",
+            "/track/v2.4/gettracklist",
+            "post",
+            aresponses.Response(
+                text='{"code": 0, "message": "success", "data": {"has_more": true, "accepted": []}}',
+                status=200,
+            ),
+        )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        packages = await client.profile.packages()
+        assert packages == []
 
 
 @pytest.mark.asyncio

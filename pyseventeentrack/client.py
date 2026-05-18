@@ -27,6 +27,7 @@ class Client:  # pylint: disable=too-few-public-methods
     def __init__(self, *, session: Optional[ClientSession] = None) -> None:
         """Initialize."""
         self._session: Optional[ClientSession] = session
+        self._cookie_jar: CookieJar = CookieJar(quote_cookie=False)
 
         self.profile: Profile = Profile(self._request)
         # This is disabled until a workaround can be found:
@@ -104,7 +105,7 @@ class Client:  # pylint: disable=too-few-public-methods
             session = self._session
         else:
             session = ClientSession(
-                cookie_jar=CookieJar(quote_cookie=False),
+                cookie_jar=self._cookie_jar,
                 timeout=ClientTimeout(total=DEFAULT_TIMEOUT),
             )
 

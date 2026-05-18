@@ -23,6 +23,7 @@ API_URL_TRACKLIST: str = "https://api.17track.net/track/v2.4/gettracklist"
 API_URL_USER: str = "https://user.17track.net/user-api/v1/sign-in-by-password"
 TRACKLIST_ORDER_BY_REGISTER_TIME_ASC: str = "11"
 TRACKLIST_TIME_ZONE_OFFSET: int = 0
+TRACKLIST_MAX_PAGES: int = 100
 
 API_PACKAGE_STATUS_MAP = {
     "NotFound": 0,
@@ -73,9 +74,9 @@ def _package_status(package: dict) -> int:
     """Return a pyseventeentrack package status code."""
     api_status = package.get("package_status")
     if not isinstance(api_status, str):
-        return 0
+        return -1
 
-    return API_PACKAGE_STATUS_MAP.get(api_status, 0)
+    return API_PACKAGE_STATUS_MAP.get(api_status, -1)
 
 
 def _parse_latest_event_time(value: Optional[str], tz: str) -> str:
@@ -220,7 +221,7 @@ class Profile:
         page_no = 1
         packages: list = []
 
-        while True:
+        while page_no <= TRACKLIST_MAX_PAGES:
             tracklist_resp = await self._tracklist_page(page_no)
             data = (tracklist_resp or {}).get("data")
             if not isinstance(data, dict):

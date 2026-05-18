@@ -32,6 +32,14 @@
         "latest_event_info": "Carrier accepted shipment",
         "latest_event_time": null,
         "archive": false
+      },
+      {
+        "id": "pkg-4",
+        "number": "NOTFOUNDSTATUS",
+        "package_status": "NotFound",
+        "latest_event_info": "Tracking number not found",
+        "latest_event_time": null,
+        "archive": false
       }
     ]
   }
