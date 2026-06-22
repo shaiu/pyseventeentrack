@@ -94,12 +94,38 @@ class Profile:
                 "location": " ".join([event.get("c", ""), event.get("d", "")]).strip(),
                 "timestamp": event.get("a"),
                 "tz": tz,
+                "first_carrier": package.get("FFirstCarrier", 0),
+                "first_carrier_options": package.get("FFirstCarrierOptions"),
                 "origin_country": package.get("FFirstCountry", 0),
                 "package_type": package.get("FTrackStateType", 0),
+                "second_carrier": package.get("FSecondCarrier", 0),
                 "status": package.get("FPackageState", 0),
             }
             packages.append(Package(package["FTrackNo"], **kwargs))
         return packages
+
+    async def _find_package_by_tracking_number(
+        self, tracking_number: str, not_found_message: Optional[str] = None
+    ) -> Package:
+        """Find a package by tracking number."""
+        packages = await self.packages()
+        try:
+            return next(p for p in packages if p.tracking_number == tracking_number)
+        except StopIteration as err:
+            raise InvalidTrackingNumberError(
+                not_found_message
+                or f"Package not found by tracking number: {tracking_number}"
+            ) from err
+
+    @staticmethod
+    def _get_package_internal_id(package: Package, tracking_number: str) -> str:
+        """Get the internal package ID for a package."""
+        if package.id is None:
+            raise RequestError(
+                f"Package ID is missing for tracking number: {tracking_number}"
+            )
+
+        return package.id
 
     async def summary(self, show_archived: bool = False) -> dict:
         """Get a quick summary of how many packages are in an account."""
@@ -130,9 +156,16 @@ class Profile:
         return results
 
     async def add_package(
-        self, tracking_number: str, friendly_name: Optional[str] = None
+        self,
+        tracking_number: str,
+        friendly_name: Optional[str] = None,
+        first_carrier: Optional[int] = None,
+        second_carrier: int = 0,
     ):
         """Add a package by tracking number to the tracking list."""
+        if first_carrier is None and second_carrier != 0:
+            raise ValueError("second_carrier cannot be set without first_carrier")
+
         add_resp: dict = await self._request(
             "post",
             API_URL_BUYER,
@@ -149,22 +182,22 @@ class Profile:
         if code != 0:
             raise RequestError(f"Non-zero status code in response: {code}")
 
-        if not friendly_name:
+        if not friendly_name and first_carrier is None:
             return
 
-        packages = await self.packages()
-        try:
-            new_package = next(
-                p for p in packages if p.tracking_number == tracking_number
-            )
-        except StopIteration as err:
-            raise InvalidTrackingNumberError(
-                f"Recently added package not found by tracking number: {tracking_number}"
-            ) from err
+        new_package = await self._find_package_by_tracking_number(
+            tracking_number,
+            f"Recently added package not found by tracking number: {tracking_number}",
+        )
+        internal_id = self._get_package_internal_id(new_package, tracking_number)
 
-        _LOGGER.debug("Found internal ID of recently added package: %s", new_package.id)
+        _LOGGER.debug("Found internal ID of recently added package: %s", internal_id)
 
-        await self.set_friendly_name(new_package.id, friendly_name)
+        if first_carrier is not None:
+            await self.set_carrier(internal_id, first_carrier, second_carrier)
+
+        if friendly_name:
+            await self.set_friendly_name(internal_id, friendly_name)
 
     async def set_friendly_name(self, internal_id: str, friendly_name: str):
         """Set a friendly name to an already added tracking number.
@@ -187,18 +220,48 @@ class Profile:
         if code != 0:
             raise RequestError(f"Non-zero status code in response: {code}")
 
+    async def change_carrier(
+        self, tracking_number: str, first_carrier: int, second_carrier: int = 0
+    ):
+        """Set the carrier for an already added tracking number."""
+        package = await self._find_package_by_tracking_number(tracking_number)
+        internal_id = self._get_package_internal_id(package, tracking_number)
+
+        _LOGGER.debug("Found internal ID of package: %s", internal_id)
+
+        await self.set_carrier(internal_id, first_carrier, second_carrier)
+
+    async def set_carrier(
+        self, internal_id: str, first_carrier: int, second_carrier: int = 0
+    ):
+        """Set the carrier for an already added tracking number.
+
+        internal_id is not the tracking number, it's the ID of an existing package.
+        """
+        carrier_resp: dict = await self._request(
+            "post",
+            API_URL_BUYER,
+            json={
+                "version": "1.0",
+                "method": "SetTrackCarrier",
+                "param": {
+                    "TrackInfoId": internal_id,
+                    "FirstCarrier": first_carrier,
+                    "SecondCarrier": second_carrier,
+                },
+            },
+        )
+
+        _LOGGER.debug("Set carrier response: %s", carrier_resp)
+
+        code = carrier_resp.get("Code")
+        if code != 0:
+            raise RequestError(f"Non-zero status code in response: {code}")
+
     async def archive_package(self, tracking_number: str):
         """Archive a package by tracking number."""
-        packages = await self.packages()
-
-        try:
-            package = next(p for p in packages if p.tracking_number == tracking_number)
-        except StopIteration as err:
-            raise InvalidTrackingNumberError(
-                f"Package not found by tracking number: {tracking_number}"
-            ) from err
-
-        internal_id = package.id
+        package = await self._find_package_by_tracking_number(tracking_number)
+        internal_id = self._get_package_internal_id(package, tracking_number)
 
         _LOGGER.debug("Found internal ID of package: %s", internal_id)
 

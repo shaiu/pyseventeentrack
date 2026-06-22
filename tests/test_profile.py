@@ -1,5 +1,7 @@
 """Define tests for the client object."""
 
+import re
+
 import aiohttp
 import pytest
 
@@ -85,6 +87,8 @@ async def test_packages(aresponses):
         packages = await client.profile.packages()
         assert len(packages) == 5
         assert packages[0].location == "Paris"
+        assert packages[0].first_carrier == 0
+        assert packages[0].second_carrier == 0
         assert packages[1].location == "Spain"
         assert packages[2].location == "Milano Italy"
         assert packages[3].location == ""
@@ -271,6 +275,92 @@ async def test_add_new_package_with_friendly_name(aresponses):
 
 
 @pytest.mark.asyncio
+async def test_add_new_package_with_first_carrier(aresponses):
+    """Test adding a new package with a first carrier."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("add_package_response.json"), status=200),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("set_carrier_response.json"), status=200),
+        body_pattern=re.compile(
+            r'.*"method": "SetTrackCarrier".*"TrackInfoId": '
+            r'"1234567890987654321".*"FirstCarrier": 190625.*"SecondCarrier": 0.*'
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        await client.profile.add_package("1234567890987654321", first_carrier=190625)
+
+
+@pytest.mark.asyncio
+async def test_add_new_package_with_second_carrier_without_first_carrier(aresponses):
+    """Test adding a new package with second carrier but no first carrier."""
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(ValueError):
+            client = Client(session=session)
+            await client.profile.add_package(
+                "1234567890987654321", second_carrier=190625
+            )
+
+
+@pytest.mark.asyncio
+async def test_add_new_package_with_missing_internal_id(aresponses):
+    """Test adding a new package when its internal ID is missing."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("add_package_response.json"), status=200),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_missing_id.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(RequestError):
+            client = Client(session=session)
+            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+            await client.profile.add_package(
+                "1234567890987654321", first_carrier=190625
+            )
+
+
+@pytest.mark.asyncio
 async def test_add_new_package_with_friendly_name_not_found(aresponses):
     """Test adding a new package with friendly name but package not found after adding it."""
     aresponses.add(
@@ -376,6 +466,130 @@ async def test_add_existing_package(aresponses):
 
 
 @pytest.mark.asyncio
+async def test_change_carrier(aresponses):
+    """Test changing the carrier for an existing package."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("set_carrier_response.json"), status=200),
+        body_pattern=re.compile(
+            r'.*"method": "SetTrackCarrier".*"TrackInfoId": '
+            r'"1234567890987654321".*"FirstCarrier": 190625.*"SecondCarrier": 0.*'
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        res = await client.profile.change_carrier("1234567890987654321", 190625)
+        assert res is None
+
+
+@pytest.mark.asyncio
+async def test_change_carrier_non_existing(aresponses):
+    """Test changing the carrier for a non existing package."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(InvalidTrackingNumberError):
+            client = Client(session=session)
+            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+            await client.profile.change_carrier("1234567890987654321111", 190625)
+
+
+@pytest.mark.asyncio
+async def test_change_carrier_missing_internal_id(aresponses):
+    """Test changing the carrier for a package with no internal ID."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_missing_id.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(RequestError):
+            client = Client(session=session)
+            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+            await client.profile.change_carrier("1234567890987654321", 190625)
+
+
+@pytest.mark.asyncio
+async def test_change_carrier_error_response(aresponses):
+    """Test changing the carrier for a package with failed response."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("set_carrier_failure_response.json"), status=200
+        ),
+        body_pattern=re.compile(
+            r'.*"method": "SetTrackCarrier".*"TrackInfoId": '
+            r'"1234567890987654321".*"FirstCarrier": 190625.*"SecondCarrier": 0.*'
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(RequestError):
+            client = Client(session=session)
+            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+            await client.profile.change_carrier("1234567890987654321", 190625)
+
+
+@pytest.mark.asyncio
 async def test_archive_package(aresponses):
     """Test archiving a package."""
     aresponses.add(
@@ -439,6 +653,33 @@ async def test_archive_package_non_existing(aresponses):
             client = Client(session=session)
             await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
             await client.profile.archive_package("1234567890987654321111")
+
+
+@pytest.mark.asyncio
+async def test_archive_package_missing_internal_id(aresponses):
+    """Test archiving a package with no internal ID."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_missing_id.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        with pytest.raises(RequestError):
+            client = Client(session=session)
+            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+            await client.profile.archive_package("1234567890987654321")
 
 
 @pytest.mark.asyncio
