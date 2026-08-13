@@ -67,8 +67,10 @@ async def main() -> None:
         first_carrier=190625,
     )
 
-    # Change the carrier for an existing package
-    await client.profile.change_carrier('<TRACKING NUMBER>', first_carrier=190625)
+    # Set the carrier for an existing package by tracking number
+    await client.profile.set_carrier_by_tracking_number(
+        '<TRACKING NUMBER>', first_carrier=190625
+    )
 
 
 asyncio.run(main())
@@ -104,7 +106,6 @@ Each `Package` object has the following info:
 * `destination_country`: the country the package was shipped to
 * `friendly_name`: the human-friendly name of the package
 * `first_carrier`: the first carrier code selected for the package
-* `first_carrier_options`: carrier options suggested by 17Track
 * `info`: a text description of the latest status
 * `location`: the current location (if known)
 * `timestamp`: the timestamp of the latest event
@@ -114,6 +115,9 @@ Each `Package` object has the following info:
 * `status`: the overall package status ("In Transit", "Delivered", etc.)
 * `tracking_info_language`: the language of the tracking info
 * `tracking_number`: the all-important tracking number
+
+Package operations that need 17Track's internal package ID raise
+`InvalidPackageDataError` when the API returns a missing or empty ID.
 
 # Contributing
 

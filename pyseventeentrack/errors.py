@@ -9,6 +9,10 @@ class InvalidTrackingNumberError(SeventeenTrackError):
     """Define an error for an invalid tracking number."""
 
 
+class InvalidPackageDataError(SeventeenTrackError):
+    """Define an error for incomplete package data returned by 17Track."""
+
+
 class NotLoggedInError(SeventeenTrackError):
     """Define an error for unauthenticated API responses."""
 

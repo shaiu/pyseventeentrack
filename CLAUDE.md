@@ -40,7 +40,7 @@ CI (`.github/workflows/ci.yaml`) runs ruff-format via pre-commit, then pytest on
 Auth spans two domains:
 
 - `API_URL_USER` = `user.17track.net/user-api/v1/sign-in-by-password` — login only.
-- `API_URL_BUYER` = `buyer.17track.net/orderapi/call` — everything else, dispatched by a `"method"` field in the JSON body (`GetTrackInfoList`, `GetIndexData`, `AddTrackNo`, `SetTrackRemark`, `SetTrackArchived`).
+- `API_URL_BUYER` = `buyer.17track.net/orderapi/call` — everything else, dispatched by a `"method"` field in the JSON body (`GetTrackInfoList`, `GetIndexData`, `AddTrackNo`, `SetTrackRemark`, `SetTrackCarrier`, `SetTrackArchived`).
 
 The login endpoint sets cookies with no `Domain` attribute, so per RFC 6265 aiohttp will only replay them to `user.17track.net`. `Client._copy_cookies_to_buyer_domain` runs after any request to `API_URL_USER` and copies the jar across to the buyer host (`client.py:31`). **Without this, every post-login call returns a non-zero `Code` and raises `NotLoggedInError`.** Any change to the login flow or session handling must preserve this hop.
 
@@ -82,7 +82,7 @@ There is no `conftest.py` and no pytest config block anywhere — asyncio mode c
 Mocks are a **FIFO queue matched by (host, path, method)**, so register one `aresponses.add(...)` per HTTP call, in call order. Practical consequences:
 
 - Nearly every test starts with a login mock against `user.17track.net`.
-- `add_package(number, friendly_name)` needs four: login → `AddTrackNo` → `GetTrackInfoList` → `SetTrackRemark`. `archive_package` needs three. Both buyer-host mocks look identical (`buyer.17track.net` / `/orderapi/call` / `post`), so **order is the only thing distinguishing them** — a missing or extra mock surfaces as a confusing failure several calls later.
+- `add_package(number, friendly_name)` needs four: login → `AddTrackNo` → `GetTrackInfoList` → `SetTrackRemark`. Adding both a friendly name and carrier needs five, with `SetTrackCarrier` after `SetTrackRemark` so a rejected carrier does not prevent naming the package. `archive_package` needs three. All buyer-host mocks look identical (`buyer.17track.net` / `/orderapi/call` / `post`), so **order is the only thing distinguishing them** — a missing or extra mock surfaces as a confusing failure several calls later.
 
 JSON fixtures live in `tests/fixtures/` and are loaded by name with `load_fixture()`. Prefer adding a fixture file over inlining response bodies.
 

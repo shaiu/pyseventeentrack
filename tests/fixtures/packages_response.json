@@ -6,11 +6,11 @@
   },
   "Json": [
     {
-      "FTrackInfoId": "1234567890987654321",
+      "FTrackInfoId": "internal-package-id",
       "FTrackNo": "1234567890987654321",
-      "FFirstCarrier": 0,
+      "FFirstCarrier": null,
       "FFirstCarrierSource": 2,
-      "FSecondCarrier": 0,
+      "FSecondCarrier": null,
       "FSecondCarrierSource": 2,
       "FLastEvent": "{\"a\":\"2018-04-23 12:02\",\"b\":null,\"c\":\"Paris\",\"d\":\"\",\"z\":\"Arrival at Destination Post\"}",
       "FIsArchived": false,
