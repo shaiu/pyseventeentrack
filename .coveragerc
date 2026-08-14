@@ -1,5 +1,6 @@
 [run]
 source = pyseventeentrack
-
 omit =
+    tests/*
+    examples/*
     pyseventeentrack/track.py
