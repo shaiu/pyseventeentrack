@@ -56,6 +56,8 @@ async def main() -> None:
     # Get all packages associated with a user's account:
     packages = await client.profile.packages()
     # >>> [pyseventeentrack.package.Package(..), ...]
+
+    # Package results are fetched across all available response pages.
     
     # Add new packages by tracking number
     await client.profile.add_package('<TRACKING NUMBER>', '<FRIENDLY NAME>')

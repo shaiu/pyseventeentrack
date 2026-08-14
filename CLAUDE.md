@@ -57,6 +57,8 @@ Reads defensively treat a `None` body as `{}` and default `Code` to `0`, because
 
 Package rows are opaque `F`-prefixed keys, and the latest event arrives as a **JSON string inside the JSON** under `FLastEvent`, with single-letter keys (`a` timestamp, `c`/`d` location parts, `z` description) — parsed in `Profile.packages`.
 
+`Profile.packages` follows `pageInfo.TotalCount` across response pages, uses the server-reported `PerPage` value for termination, and stops early if the API returns an empty page.
+
 ### Package: int codes → human strings
 
 `Package` is a frozen `attrs` class whose `__attrs_post_init__` rewrites fields in place via `object.__setattr__`, converting integer API codes into display strings through `COUNTRY_MAP`, `PACKAGE_TYPE_MAP`, `PACKAGE_STATUS_MAP` (`package.py`). Consequence: the declared type annotations (`destination_country: int`) describe the *input*, not what a caller reads back.

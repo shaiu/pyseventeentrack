@@ -1,5 +1,7 @@
 """Define tests for the client object."""
 
+import re
+
 import aiohttp
 import pytest
 
@@ -88,6 +90,87 @@ async def test_packages(aresponses):
         assert packages[1].location == "Spain"
         assert packages[2].location == "Milano Italy"
         assert packages[3].location == ""
+
+
+@pytest.mark.asyncio
+async def test_packages_paginates(aresponses):
+    """Test getting packages across multiple result pages."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_page_1.json"), status=200
+        ),
+        body_pattern=re.compile(r'.*"Page": 1.*"PerPage": 40.*'),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_page_2.json"), status=200
+        ),
+        body_pattern=re.compile(r'.*"Page": 2.*"PerPage": 40.*'),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        packages = await client.profile.packages()
+        assert [package.tracking_number for package in packages] == [
+            "FIRST-PAGE-TRACKING",
+            "SECOND-PAGE-TRACKING",
+        ]
+        aresponses.assert_plan_strictly_followed()
+
+
+@pytest.mark.asyncio
+async def test_packages_stops_on_empty_page(aresponses):
+    """Test stopping pagination when the API returns an empty page."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_large_total.json"), status=200
+        ),
+        body_pattern=re.compile(r'.*"Page": 1.*"PerPage": 40.*'),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_empty_page.json"), status=200
+        ),
+        body_pattern=re.compile(r'.*"Page": 2.*"PerPage": 40.*'),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        packages = await client.profile.packages()
+        assert [package.tracking_number for package in packages] == [
+            "FIRST-PAGE-TRACKING"
+        ]
+        aresponses.assert_plan_strictly_followed()
 
 
 @pytest.mark.asyncio

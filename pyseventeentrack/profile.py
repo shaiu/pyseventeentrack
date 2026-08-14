@@ -12,6 +12,7 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 API_URL_BUYER: str = "https://buyer.17track.net/orderapi/call"
 API_URL_USER: str = "https://user.17track.net/user-api/v1/sign-in-by-password"
+PACKAGES_PER_PAGE: int = 40
 
 
 class Profile:
@@ -53,52 +54,69 @@ class Profile:
         tz: str = "UTC",
     ) -> list:
         """Get the list of packages associated with the account."""
-        packages_resp: dict = await self._request(
-            "post",
-            API_URL_BUYER,
-            json={
-                "version": "1.0",
-                "method": "GetTrackInfoList",
-                "param": {
-                    "IsArchived": show_archived,
-                    "Item": "",
-                    "Page": 1,
-                    "PerPage": 40,
-                    "PackageState": package_state,
-                    "Sequence": "0",
+        packages: List[Package] = []
+        page = 1
+        while True:
+            packages_resp: dict = await self._request(
+                "post",
+                API_URL_BUYER,
+                json={
+                    "version": "1.0",
+                    "method": "GetTrackInfoList",
+                    "param": {
+                        "IsArchived": show_archived,
+                        "Item": "",
+                        "Page": page,
+                        "PerPage": PACKAGES_PER_PAGE,
+                        "PackageState": package_state,
+                        "Sequence": "0",
+                    },
+                    "sourcetype": 0,
                 },
-                "sourcetype": 0,
-            },
-        )
-
-        _LOGGER.debug("Packages response: %s", packages_resp)
-
-        code = (packages_resp or {}).get("Code", 0)
-        if code != 0:
-            raise NotLoggedInError(
-                f"Not logged in (Code: {code}, Message: {(packages_resp or {}).get('Message')})"
             )
 
-        packages: List[Package] = []
-        for package in (packages_resp or {}).get("Json") or []:
-            event: dict = {}
-            last_event_raw: str = package.get("FLastEvent")
-            if last_event_raw:
-                event = json.loads(last_event_raw)
+            _LOGGER.debug("Packages response: %s", packages_resp)
 
-            kwargs: dict = {
-                "id": package.get("FTrackInfoId"),
-                "destination_country": package.get("FSecondCountry", 0),
-                "friendly_name": package.get("FRemark"),
-                "info_text": event.get("z"),
-                "location": " ".join([event.get("c", ""), event.get("d", "")]).strip(),
-                "timestamp": event.get("a"),
-                "tz": tz,
-                "origin_country": package.get("FFirstCountry", 0),
-                "package_type": package.get("FTrackStateType", 0),
-                "status": package.get("FPackageState", 0),
-            }
-            packages.append(Package(package["FTrackNo"], **kwargs))
+            code = (packages_resp or {}).get("Code", 0)
+            if code != 0:
+                raise NotLoggedInError(
+                    f"Not logged in (Code: {code}, Message: "
+                    f"{(packages_resp or {}).get('Message')})"
+                )
+
+            rows = (packages_resp or {}).get("Json") or []
+            for package in rows:
+                event: dict = {}
+                last_event_raw: str = package.get("FLastEvent")
+                if last_event_raw:
+                    event = json.loads(last_event_raw)
+
+                kwargs: dict = {
+                    "id": package.get("FTrackInfoId"),
+                    "destination_country": package.get("FSecondCountry", 0),
+                    "friendly_name": package.get("FRemark"),
+                    "info_text": event.get("z"),
+                    "location": " ".join(
+                        [event.get("c", ""), event.get("d", "")]
+                    ).strip(),
+                    "timestamp": event.get("a"),
+                    "tz": tz,
+                    "origin_country": package.get("FFirstCountry", 0),
+                    "package_type": package.get("FTrackStateType", 0),
+                    "status": package.get("FPackageState", 0),
+                }
+                packages.append(Package(package["FTrackNo"], **kwargs))
+
+            if not rows:
+                break
+
+            page_info = (packages_resp or {}).get("pageInfo") or {}
+            if page * (page_info.get("PerPage") or PACKAGES_PER_PAGE) >= (
+                page_info.get("TotalCount") or 0
+            ):
+                break
+            page += 1
+
         return packages
 
     async def summary(self, show_archived: bool = False) -> dict:
