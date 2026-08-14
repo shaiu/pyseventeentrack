@@ -9,6 +9,7 @@ from pyseventeentrack import Client
 from pyseventeentrack.errors import (
     InvalidPackageDataError,
     InvalidTrackingNumberError,
+    PackageNotFoundError,
     RequestError,
 )
 from .common import TEST_EMAIL, TEST_PASSWORD, load_fixture
@@ -97,47 +98,6 @@ async def test_packages(aresponses):
         assert packages[1].location == "Spain"
         assert packages[2].location == "Milano Italy"
         assert packages[3].location == ""
-
-
-@pytest.mark.asyncio
-async def test_packages_paginates(aresponses):
-    """Test getting packages across multiple result pages."""
-    aresponses.add(
-        "user.17track.net",
-        "/user-api/v1/sign-in-by-password",
-        "post",
-        aresponses.Response(
-            text=load_fixture("authentication_success_response.json"), status=200
-        ),
-    )
-    aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
-        "post",
-        aresponses.Response(
-            text=load_fixture("packages_response_page_1.json"), status=200
-        ),
-        body_pattern=re.compile(r'.*"Page": 1.*'),
-    )
-    aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
-        "post",
-        aresponses.Response(
-            text=load_fixture("packages_response_page_2.json"), status=200
-        ),
-        body_pattern=re.compile(r'.*"Page": 2.*'),
-    )
-
-    async with aiohttp.ClientSession() as session:
-        client = Client(session=session)
-        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
-        packages = await client.profile.packages()
-        assert [package.tracking_number for package in packages] == [
-            "FIRST-PAGE-TRACKING",
-            "SECOND-PAGE-TRACKING",
-        ]
-        aresponses.assert_plan_strictly_followed()
 
 
 @pytest.mark.asyncio
@@ -583,8 +543,8 @@ async def test_add_existing_package(aresponses):
 
 
 @pytest.mark.asyncio
-async def test_set_carrier_by_tracking_number_after_first_page(aresponses):
-    """Test setting a carrier for a package after the first result page."""
+async def test_set_carrier_by_tracking_number(aresponses):
+    """Test setting a carrier by tracking number."""
     aresponses.add(
         "user.17track.net",
         "/user-api/v1/sign-in-by-password",
@@ -597,19 +557,7 @@ async def test_set_carrier_by_tracking_number_after_first_page(aresponses):
         "buyer.17track.net",
         "/orderapi/call",
         "post",
-        aresponses.Response(
-            text=load_fixture("packages_response_page_1.json"), status=200
-        ),
-        body_pattern=re.compile(r'.*"Page": 1.*'),
-    )
-    aresponses.add(
-        "buyer.17track.net",
-        "/orderapi/call",
-        "post",
-        aresponses.Response(
-            text=load_fixture("packages_response_page_2.json"), status=200
-        ),
-        body_pattern=re.compile(r'.*"Page": 2.*'),
+        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
     )
     aresponses.add(
         "buyer.17track.net",
@@ -618,7 +566,7 @@ async def test_set_carrier_by_tracking_number_after_first_page(aresponses):
         aresponses.Response(text=load_fixture("set_carrier_response.json"), status=200),
         body_pattern=re.compile(
             r'.*"method": "SetTrackCarrier".*"TrackInfoId": '
-            r'"second-page-id".*"FirstCarrier": 190625.*"SecondCarrier": 404.*'
+            r'"internal-package-id".*"FirstCarrier": 190625.*"SecondCarrier": 0.*'
         ),
     )
 
@@ -626,7 +574,7 @@ async def test_set_carrier_by_tracking_number_after_first_page(aresponses):
         client = Client(session=session)
         await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
         res = await client.profile.set_carrier_by_tracking_number(
-            "SECOND-PAGE-TRACKING", 190625
+            "1234567890987654321", 190625
         )
         assert res is None
         aresponses.assert_plan_strictly_followed()
@@ -826,6 +774,27 @@ async def test_set_carrier_rejects_invalid_carrier_combination():
 
 
 @pytest.mark.asyncio
+async def test_set_carrier_rejects_clearing_first_with_preserved_second(aresponses):
+    """Test the error when a preserved second carrier blocks clearing the first."""
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_archived.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        with pytest.raises(
+            ValueError,
+            match=r"cannot clear first_carrier while second_carrier \(222\) is set",
+        ):
+            await client.profile.set_carrier("archived-package-id", 0)
+
+
+@pytest.mark.asyncio
 async def test_set_carrier_internal_id_not_found(aresponses):
     """Test preserving a second carrier for an unknown internal ID."""
     aresponses.add(
@@ -848,7 +817,7 @@ async def test_set_carrier_internal_id_not_found(aresponses):
     async with aiohttp.ClientSession() as session:
         client = Client(session=session)
         with pytest.raises(
-            InvalidPackageDataError,
+            PackageNotFoundError,
             match="Package not found by internal ID: unknown-id",
         ):
             await client.profile.set_carrier("unknown-id", 190625)

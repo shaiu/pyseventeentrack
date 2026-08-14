@@ -118,6 +118,7 @@ Each `Package` object has the following info:
 
 Package operations that need 17Track's internal package ID raise
 `InvalidPackageDataError` when the API returns a missing or empty ID.
+Looking up an unknown internal package ID raises `PackageNotFoundError`.
 
 # Contributing
 

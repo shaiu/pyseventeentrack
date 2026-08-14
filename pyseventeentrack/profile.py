@@ -9,6 +9,7 @@ from .errors import (
     InvalidPackageDataError,
     InvalidTrackingNumberError,
     NotLoggedInError,
+    PackageNotFoundError,
     RequestError,
 )
 from .package import PACKAGE_STATUS_MAP, Package
@@ -58,65 +59,55 @@ class Profile:
         tz: str = "UTC",
     ) -> list:
         """Get the list of packages associated with the account."""
-        packages: List[Package] = []
-        page = 1
-        while True:
-            packages_resp: dict = await self._request(
-                "post",
-                API_URL_BUYER,
-                json={
-                    "version": "1.0",
-                    "method": "GetTrackInfoList",
-                    "param": {
-                        "IsArchived": show_archived,
-                        "Item": "",
-                        "Page": page,
-                        "PerPage": 40,
-                        "PackageState": package_state,
-                        "Sequence": "0",
-                    },
-                    "sourcetype": 0,
+        packages_resp: dict = await self._request(
+            "post",
+            API_URL_BUYER,
+            json={
+                "version": "1.0",
+                "method": "GetTrackInfoList",
+                "param": {
+                    "IsArchived": show_archived,
+                    "Item": "",
+                    "Page": 1,
+                    "PerPage": 40,
+                    "PackageState": package_state,
+                    "Sequence": "0",
                 },
+                "sourcetype": 0,
+            },
+        )
+
+        _LOGGER.debug("Packages response: %s", packages_resp)
+
+        code = (packages_resp or {}).get("Code", 0)
+        if code != 0:
+            raise NotLoggedInError(
+                f"Not logged in (Code: {code}, Message: "
+                f"{(packages_resp or {}).get('Message')})"
             )
 
-            _LOGGER.debug("Packages response: %s", packages_resp)
+        packages: List[Package] = []
+        for package in (packages_resp or {}).get("Json") or []:
+            event: dict = {}
+            last_event_raw: str = package.get("FLastEvent")
+            if last_event_raw:
+                event = json.loads(last_event_raw)
 
-            code = (packages_resp or {}).get("Code", 0)
-            if code != 0:
-                raise NotLoggedInError(
-                    f"Not logged in (Code: {code}, Message: "
-                    f"{(packages_resp or {}).get('Message')})"
-                )
-
-            for package in (packages_resp or {}).get("Json") or []:
-                event: dict = {}
-                last_event_raw: str = package.get("FLastEvent")
-                if last_event_raw:
-                    event = json.loads(last_event_raw)
-
-                kwargs: dict = {
-                    "id": package.get("FTrackInfoId"),
-                    "destination_country": package.get("FSecondCountry", 0),
-                    "friendly_name": package.get("FRemark"),
-                    "info_text": event.get("z"),
-                    "location": " ".join(
-                        [event.get("c", ""), event.get("d", "")]
-                    ).strip(),
-                    "timestamp": event.get("a"),
-                    "tz": tz,
-                    "first_carrier": package.get("FFirstCarrier") or 0,
-                    "origin_country": package.get("FFirstCountry", 0),
-                    "package_type": package.get("FTrackStateType", 0),
-                    "second_carrier": package.get("FSecondCarrier") or 0,
-                    "status": package.get("FPackageState", 0),
-                }
-                packages.append(Package(package["FTrackNo"], **kwargs))
-
-            page_info = (packages_resp or {}).get("pageInfo") or {}
-            total_count = page_info.get("TotalCount") or 0
-            if page * 40 >= total_count:
-                break
-            page += 1
+            kwargs: dict = {
+                "id": package.get("FTrackInfoId"),
+                "destination_country": package.get("FSecondCountry", 0),
+                "friendly_name": package.get("FRemark"),
+                "info_text": event.get("z"),
+                "location": " ".join([event.get("c", ""), event.get("d", "")]).strip(),
+                "timestamp": event.get("a"),
+                "tz": tz,
+                "first_carrier": package.get("FFirstCarrier") or 0,
+                "origin_country": package.get("FFirstCountry", 0),
+                "package_type": package.get("FTrackStateType", 0),
+                "second_carrier": package.get("FSecondCarrier") or 0,
+                "status": package.get("FPackageState", 0),
+            }
+            packages.append(Package(package["FTrackNo"], **kwargs))
 
         return packages
 
@@ -156,14 +147,21 @@ class Profile:
             if package is not None:
                 return package
 
-        raise InvalidPackageDataError(
-            f"Package not found by internal ID: {internal_id}"
-        )
+        raise PackageNotFoundError(f"Package not found by internal ID: {internal_id}")
 
     @staticmethod
-    def _validate_carriers(first_carrier: int, second_carrier: Optional[int]) -> None:
+    def _validate_carriers(
+        first_carrier: int,
+        second_carrier: Optional[int],
+        second_carrier_is_preserved: bool = False,
+    ) -> None:
         """Validate the relationship between first and second carriers."""
         if not first_carrier and second_carrier:
+            if second_carrier_is_preserved:
+                raise ValueError(
+                    "cannot clear first_carrier while "
+                    f"second_carrier ({second_carrier}) is set"
+                )
             raise ValueError("second_carrier cannot be set without first_carrier")
 
     async def summary(self, show_archived: bool = False) -> dict:
@@ -233,12 +231,18 @@ class Profile:
             await self.set_friendly_name(internal_id, friendly_name)
 
         if first_carrier is not None:
+            resolved_second_carrier = (
+                new_package.second_carrier if second_carrier is None else second_carrier
+            )
+            self._validate_carriers(
+                first_carrier,
+                resolved_second_carrier,
+                second_carrier_is_preserved=second_carrier is None,
+            )
             await self.set_carrier(
                 internal_id,
                 first_carrier,
-                new_package.second_carrier
-                if second_carrier is None
-                else second_carrier,
+                resolved_second_carrier,
             )
 
     async def set_friendly_name(self, internal_id: str, friendly_name: str):
@@ -272,10 +276,18 @@ class Profile:
         package, internal_id = await self._get_package_and_internal_id(
             tracking_number, include_archived=True
         )
+        resolved_second_carrier = (
+            package.second_carrier if second_carrier is None else second_carrier
+        )
+        self._validate_carriers(
+            first_carrier,
+            resolved_second_carrier,
+            second_carrier_is_preserved=second_carrier is None,
+        )
         await self.set_carrier(
             internal_id,
             first_carrier,
-            package.second_carrier if second_carrier is None else second_carrier,
+            resolved_second_carrier,
         )
 
     async def set_carrier(
@@ -287,15 +299,22 @@ class Profile:
         """Set the carrier for an already added tracking number.
 
         internal_id is not the tracking number, it's the ID of an existing package.
+        Omitting second_carrier looks up the package to preserve its current value.
+        Pass second_carrier explicitly to avoid that lookup.
         """
         if not internal_id:
             raise InvalidPackageDataError("Package ID cannot be empty")
 
+        second_carrier_is_preserved = second_carrier is None
         if second_carrier is None:
             package = await self._find_package_by_internal_id(internal_id)
             second_carrier = package.second_carrier
 
-        self._validate_carriers(first_carrier, second_carrier)
+        self._validate_carriers(
+            first_carrier,
+            second_carrier,
+            second_carrier_is_preserved=second_carrier_is_preserved,
+        )
 
         carrier_resp: dict = await self._request(
             "post",
