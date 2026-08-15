@@ -2,10 +2,16 @@
 
 import json
 import logging
-from typing import Callable, Coroutine, List, Optional, Union
+from typing import Callable, Coroutine, List, Optional, Tuple, Union
 
 from .encrypt import rsa_encrypt
-from .errors import InvalidTrackingNumberError, NotLoggedInError, RequestError
+from .errors import (
+    InvalidPackageDataError,
+    InvalidTrackingNumberError,
+    NotLoggedInError,
+    PackageNotFoundError,
+    RequestError,
+)
 from .package import PACKAGE_STATUS_MAP, Package
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -101,8 +107,10 @@ class Profile:
                     ).strip(),
                     "timestamp": event.get("a"),
                     "tz": tz,
+                    "first_carrier": package.get("FFirstCarrier") or 0,
                     "origin_country": package.get("FFirstCountry", 0),
                     "package_type": package.get("FTrackStateType", 0),
+                    "second_carrier": package.get("FSecondCarrier") or 0,
                     "status": package.get("FPackageState", 0),
                 }
                 packages.append(Package(package["FTrackNo"], **kwargs))
@@ -118,6 +126,59 @@ class Profile:
             page += 1
 
         return packages
+
+    async def _get_package_and_internal_id(
+        self,
+        tracking_number: str,
+        not_found_message: Optional[str] = None,
+        include_archived: bool = False,
+    ) -> Tuple[Package, str]:
+        """Find a package by tracking number and return its validated internal ID."""
+        archived_states = (False, True) if include_archived else (False,)
+        for show_archived in archived_states:
+            packages = await self.packages(show_archived=show_archived)
+            package = next(
+                (p for p in packages if p.tracking_number == tracking_number), None
+            )
+            if package is None:
+                continue
+            if not package.id:
+                raise InvalidPackageDataError(
+                    f"Package ID is missing for tracking number: {tracking_number}"
+                )
+
+            _LOGGER.debug("Found internal ID of package: %s", package.id)
+            return package, package.id
+
+        raise InvalidTrackingNumberError(
+            not_found_message
+            or f"Package not found by tracking number: {tracking_number}"
+        )
+
+    async def _find_package_by_internal_id(self, internal_id: str) -> Package:
+        """Find an active or archived package by its internal ID."""
+        for show_archived in (False, True):
+            packages = await self.packages(show_archived=show_archived)
+            package = next((p for p in packages if p.id == internal_id), None)
+            if package is not None:
+                return package
+
+        raise PackageNotFoundError(f"Package not found by internal ID: {internal_id}")
+
+    @staticmethod
+    def _validate_carriers(
+        first_carrier: int,
+        second_carrier: Optional[int],
+        second_carrier_is_preserved: bool = False,
+    ) -> None:
+        """Validate the relationship between first and second carriers."""
+        if not first_carrier and second_carrier:
+            if second_carrier_is_preserved:
+                raise ValueError(
+                    "cannot clear first_carrier while "
+                    f"second_carrier ({second_carrier}) is set"
+                )
+            raise ValueError("second_carrier cannot be set without first_carrier")
 
     async def summary(self, show_archived: bool = False) -> dict:
         """Get a quick summary of how many packages are in an account."""
@@ -148,9 +209,16 @@ class Profile:
         return results
 
     async def add_package(
-        self, tracking_number: str, friendly_name: Optional[str] = None
+        self,
+        tracking_number: str,
+        friendly_name: Optional[str] = None,
+        first_carrier: Optional[int] = None,
+        second_carrier: Optional[int] = None,
     ):
         """Add a package by tracking number to the tracking list."""
+        if first_carrier is not None or second_carrier:
+            self._validate_carriers(first_carrier or 0, second_carrier)
+
         add_resp: dict = await self._request(
             "post",
             API_URL_BUYER,
@@ -167,22 +235,31 @@ class Profile:
         if code != 0:
             raise RequestError(f"Non-zero status code in response: {code}")
 
-        if not friendly_name:
+        if not friendly_name and first_carrier is None:
             return
 
-        packages = await self.packages()
-        try:
-            new_package = next(
-                p for p in packages if p.tracking_number == tracking_number
+        new_package, internal_id = await self._get_package_and_internal_id(
+            tracking_number,
+            f"Recently added package not found by tracking number: {tracking_number}",
+        )
+
+        if friendly_name:
+            await self.set_friendly_name(internal_id, friendly_name)
+
+        if first_carrier is not None:
+            resolved_second_carrier = (
+                new_package.second_carrier if second_carrier is None else second_carrier
             )
-        except StopIteration as err:
-            raise InvalidTrackingNumberError(
-                f"Recently added package not found by tracking number: {tracking_number}"
-            ) from err
-
-        _LOGGER.debug("Found internal ID of recently added package: %s", new_package.id)
-
-        await self.set_friendly_name(new_package.id, friendly_name)
+            self._validate_carriers(
+                first_carrier,
+                resolved_second_carrier,
+                second_carrier_is_preserved=second_carrier is None,
+            )
+            await self.set_carrier(
+                internal_id,
+                first_carrier,
+                resolved_second_carrier,
+            )
 
     async def set_friendly_name(self, internal_id: str, friendly_name: str):
         """Set a friendly name to an already added tracking number.
@@ -205,20 +282,79 @@ class Profile:
         if code != 0:
             raise RequestError(f"Non-zero status code in response: {code}")
 
+    async def set_carrier_by_tracking_number(
+        self,
+        tracking_number: str,
+        first_carrier: int,
+        second_carrier: Optional[int] = None,
+    ):
+        """Set the carrier for an already added tracking number."""
+        package, internal_id = await self._get_package_and_internal_id(
+            tracking_number, include_archived=True
+        )
+        resolved_second_carrier = (
+            package.second_carrier if second_carrier is None else second_carrier
+        )
+        self._validate_carriers(
+            first_carrier,
+            resolved_second_carrier,
+            second_carrier_is_preserved=second_carrier is None,
+        )
+        await self.set_carrier(
+            internal_id,
+            first_carrier,
+            resolved_second_carrier,
+        )
+
+    async def set_carrier(
+        self,
+        internal_id: str,
+        first_carrier: int,
+        second_carrier: Optional[int] = None,
+    ):
+        """Set the carrier for an already added tracking number.
+
+        internal_id is not the tracking number, it's the ID of an existing package.
+        Omitting second_carrier looks up the package to preserve its current value.
+        Pass second_carrier explicitly to avoid that lookup.
+        """
+        if not internal_id:
+            raise InvalidPackageDataError("Package ID cannot be empty")
+
+        second_carrier_is_preserved = second_carrier is None
+        if second_carrier is None:
+            package = await self._find_package_by_internal_id(internal_id)
+            second_carrier = package.second_carrier
+
+        self._validate_carriers(
+            first_carrier,
+            second_carrier,
+            second_carrier_is_preserved=second_carrier_is_preserved,
+        )
+
+        carrier_resp: dict = await self._request(
+            "post",
+            API_URL_BUYER,
+            json={
+                "version": "1.0",
+                "method": "SetTrackCarrier",
+                "param": {
+                    "TrackInfoId": internal_id,
+                    "FirstCarrier": first_carrier,
+                    "SecondCarrier": second_carrier,
+                },
+            },
+        )
+
+        _LOGGER.debug("Set carrier response: %s", carrier_resp)
+
+        code = carrier_resp.get("Code")
+        if code != 0:
+            raise RequestError(f"Non-zero status code in response: {code}")
+
     async def archive_package(self, tracking_number: str):
         """Archive a package by tracking number."""
-        packages = await self.packages()
-
-        try:
-            package = next(p for p in packages if p.tracking_number == tracking_number)
-        except StopIteration as err:
-            raise InvalidTrackingNumberError(
-                f"Package not found by tracking number: {tracking_number}"
-            ) from err
-
-        internal_id = package.id
-
-        _LOGGER.debug("Found internal ID of package: %s", internal_id)
+        _, internal_id = await self._get_package_and_internal_id(tracking_number)
 
         archive_resp: dict = await self._request(
             "post",

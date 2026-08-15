@@ -272,6 +272,8 @@ class Package:  # pylint: disable=too-few-public-methods,too-many-instance-attri
     status: int = attr.ib(default=0)
     tracking_info_language: str = attr.ib(default="Unknown")
     tz: str = attr.ib(default="UTC")
+    first_carrier: int = attr.ib(default=0)
+    second_carrier: int = attr.ib(default=0)
 
     def __attrs_post_init__(self):
         """Do some post-init processing."""

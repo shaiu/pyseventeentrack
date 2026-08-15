@@ -62,6 +62,18 @@ async def main() -> None:
     # Add new packages by tracking number
     await client.profile.add_package('<TRACKING NUMBER>', '<FRIENDLY NAME>')
 
+    # Add a new package and specify the carrier code
+    await client.profile.add_package(
+        '<TRACKING NUMBER>',
+        '<FRIENDLY NAME>',
+        first_carrier=190625,
+    )
+
+    # Set the carrier for an existing package by tracking number
+    await client.profile.set_carrier_by_tracking_number(
+        '<TRACKING NUMBER>', first_carrier=190625
+    )
+
 
 asyncio.run(main())
 ```
@@ -95,14 +107,20 @@ Each `Package` object has the following info:
 
 * `destination_country`: the country the package was shipped to
 * `friendly_name`: the human-friendly name of the package
+* `first_carrier`: the first carrier code selected for the package
 * `info`: a text description of the latest status
 * `location`: the current location (if known)
 * `timestamp`: the timestamp of the latest event
 * `origin_country`: the country the package was shipped from
 * `package_type`: the type of package (if known)
+* `second_carrier`: the second carrier code selected for the package
 * `status`: the overall package status ("In Transit", "Delivered", etc.)
 * `tracking_info_language`: the language of the tracking info
 * `tracking_number`: the all-important tracking number
+
+Package operations that need 17Track's internal package ID raise
+`InvalidPackageDataError` when the API returns a missing or empty ID.
+Looking up an unknown internal package ID raises `PackageNotFoundError`.
 
 # Contributing
 
