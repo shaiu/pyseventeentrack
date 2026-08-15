@@ -719,6 +719,52 @@ async def test_set_carrier_by_tracking_number_validates_carriers(aresponses):
 
 
 @pytest.mark.asyncio
+async def test_set_carrier_by_tracking_number_preserved_second_blocks_clear(aresponses):
+    """Test clearing the first carrier when the wrapper preserves the second.
+
+    The wrapper resolves second_carrier before delegating, so it is the only
+    caller that knows the value was preserved rather than passed in. Without its
+    own validation the error would name an argument the caller never supplied.
+    """
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_empty.json"), status=200
+        ),
+        body_pattern=re.compile(r'.*"IsArchived": false.*'),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_archived.json"), status=200
+        ),
+        body_pattern=re.compile(r'.*"IsArchived": true.*'),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        with pytest.raises(
+            ValueError,
+            match=r"cannot clear first_carrier while second_carrier \(222\) is set",
+        ):
+            await client.profile.set_carrier_by_tracking_number("ARCHIVED-TRACKING", 0)
+        aresponses.assert_plan_strictly_followed()
+
+
+@pytest.mark.asyncio
 async def test_set_carrier_preserves_existing_second_carrier(aresponses):
     """Test preserving the second carrier when setting by internal ID."""
     aresponses.add(
