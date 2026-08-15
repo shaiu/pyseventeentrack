@@ -1,5 +1,9 @@
 """Define tests for the client object."""
 
+# This module is a flat list of independent request/response scenarios, so it
+# grows past pylint's 1000-line default as API surfaces are added.
+# pylint: disable=too-many-lines
+
 import re
 
 import aiohttp
@@ -384,7 +388,7 @@ async def test_add_new_package_sets_name_before_carrier(aresponses):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("first_carrier", [None, 0])
 async def test_add_new_package_with_second_carrier_without_first_carrier(
-    aresponses, first_carrier
+    first_carrier,
 ):
     """Test adding a new package with second carrier but no first carrier."""
     async with aiohttp.ClientSession() as session:
