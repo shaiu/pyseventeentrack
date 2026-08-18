@@ -6,5 +6,6 @@ __pycache__/
 pyseventeentrack.egg-info
 coverage.xml
 poetry.lock
+uv.lock
 tags
 .vscode

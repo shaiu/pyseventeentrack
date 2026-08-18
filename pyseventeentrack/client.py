@@ -72,16 +72,27 @@ class Client:  # pylint: disable=too-few-public-methods
         json: Optional[dict] = None,
     ) -> dict:
         """Make a request against the 17track API."""
-        if self._session is not None:
-            # Ownership: caller supplied a session at construction — use it
-            # as-is (even if closed; aiohttp will raise the appropriate error)
-            # and never close it.
+        # Determine which session to use and whether we own its lifecycle.
+        #
+        # Three cases:
+        #   1. External session supplied and open  → reuse it; caller owns it,
+        #      never close it.
+        #   2. External session supplied but closed → create a throwaway session
+        #      for this call only and close it in finally (pre-patch behaviour,
+        #      preserves backwards compatibility).
+        #   3. No external session                 → lazily create/reuse
+        #      _internal_session; caller must call close() when done.
+        temporary_session: bool = False
+
+        if self._session is not None and not self._session.closed:
+            # Case 1: open external session — reuse, never close.
             session: ClientSession = self._session
+        elif self._session is not None and self._session.closed:
+            # Case 2: closed external session — throwaway, close in finally.
+            session = ClientSession(timeout=ClientTimeout(total=DEFAULT_TIMEOUT))
+            temporary_session = True
         else:
-            # Ownership: no external session — lazily create one internal
-            # session and reuse it across all calls so that cookies (e.g.
-            # login) are preserved between requests.  The caller must call
-            # close() when done.
+            # Case 3: no external session — persistent internal session.
             if self._internal_session is None or self._internal_session.closed:
                 self._internal_session = ClientSession(
                     timeout=ClientTimeout(total=DEFAULT_TIMEOUT)
@@ -115,3 +126,6 @@ class Client:  # pylint: disable=too-few-public-methods
                 return data
         except ClientError as err:
             raise RequestError(f"Error requesting data from {url}: {err}") from err
+        finally:
+            if temporary_session:
+                await session.close()

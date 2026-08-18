@@ -174,24 +174,38 @@ async def test_close_does_not_close_external_session(aresponses):
 
 
 @pytest.mark.asyncio
-async def test_external_session_closed_raises_not_falls_back():
-    """Test that a closed external session raises RequestError, not falls back.
+async def test_external_session_closed_uses_temporary_session(aresponses):
+    """Test that a closed external session falls back to a per-call throwaway.
 
-    Ownership is determined at construction time.  If the caller supplied a
-    session, Client must use it (and let aiohttp surface the error) rather than
-    silently creating an internal session.
+    Pre-patch behaviour: when the caller-supplied session is already closed,
+    _request creates a temporary ClientSession for that call only and closes it
+    in finally.  This preserves backwards compatibility — callers that relied on
+    the library working even with a closed session are not broken.
+
+    Verification:
+    - The request succeeds (temporary session is open and functional).
+    - _internal_session is never set (the throwaway is not retained).
+    - The external session remains closed throughout (we never reopen it).
     """
+    aresponses.add(
+        "random.domain",
+        "/some/path",
+        "get",
+        aresponses.Response(text='{"Code": 0}', status=200),
+    )
+
     session = aiohttp.ClientSession()
     await session.close()
     assert session.closed
 
     client = Client(session=session)
-    # aiohttp raises RuntimeError for requests on a closed session; _request
-    # wraps ClientError subclasses as RequestError.  RuntimeError is not a
-    # ClientError, so it propagates unwrapped — either way, no internal session
-    # must be created.
-    with pytest.raises((RequestError, RuntimeError)):
-        await client._request("get", "https://random.domain/no/good")  # pylint: disable=protected-access
+    result = await client._request("get", "https://random.domain/some/path")  # pylint: disable=protected-access
 
-    # No internal session must have been created.
+    # Request succeeded via the temporary session.
+    assert result == {"Code": 0}
+
+    # No internal session was created or retained.
     assert client._internal_session is None  # pylint: disable=protected-access
+
+    # The external session is still closed (we never touched it).
+    assert session.closed
