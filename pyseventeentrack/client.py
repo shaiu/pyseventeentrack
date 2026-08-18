@@ -22,7 +22,11 @@ class Client:  # pylint: disable=too-few-public-methods
 
     def __init__(self, *, session: Optional[ClientSession] = None) -> None:
         """Initialize."""
+        # _session is the externally-supplied session; Client never closes it.
         self._session: Optional[ClientSession] = session
+        # _internal_session is lazily created only when no external session was
+        # supplied.  Client owns its lifecycle; close() releases it.
+        self._internal_session: Optional[ClientSession] = None
 
         self.profile: Profile = Profile(self._request)
         # This is disabled until a workaround can be found:
@@ -48,6 +52,16 @@ class Client:  # pylint: disable=too-few-public-methods
                 buyer_url.host,
             )
 
+    async def close(self) -> None:
+        """Close the internally-managed session, if any.
+
+        Has no effect when the caller supplied an external session (the caller
+        owns its lifecycle) or when no request has been made yet.  Idempotent.
+        """
+        if self._internal_session and not self._internal_session.closed:
+            await self._internal_session.close()
+            self._internal_session = None
+
     async def _request(  # pylint: disable=too-many-arguments
         self,
         method: str,
@@ -57,15 +71,43 @@ class Client:  # pylint: disable=too-few-public-methods
         params: Optional[dict] = None,
         json: Optional[dict] = None,
     ) -> dict:
-        """Make a request against the RainMachine device."""
-        use_running_session = self._session and not self._session.closed
+        """Make a request against the 17track API."""
+        # Session-ownership strategy — three cases:
+        #
+        #   1. External session supplied and open:
+        #      Reuse it as-is.  Caller owns the lifecycle; Client never closes it.
+        #      Cookies (including post-login copies) accumulate in the caller's jar
+        #      and survive across calls for as long as the caller keeps it open.
+        #
+        #   2. External session supplied but already closed:
+        #      Legacy per-call fallback — create a fresh throwaway ClientSession
+        #      for this single request and close it in finally.  This preserves
+        #      pre-patch behaviour for callers that passed a closed session.
+        #      Note: each call gets its own empty cookie jar, so authenticated
+        #      multi-request flows (login → packages) are NOT supported via this
+        #      path; use an open external session or bare Client() instead.
+        #
+        #   3. No external session supplied (bare Client()):
+        #      Lazily create one internal ClientSession on the first request and
+        #      reuse it for all subsequent calls.  Cookies survive across calls,
+        #      making login → packages work correctly.  Caller must call close()
+        #      when done; Client owns the lifecycle.
+        temporary_session: bool = False
 
-        if use_running_session:
-            session = self._session
-        else:
+        if self._session is not None and not self._session.closed:
+            # Case 1: open external session — reuse, caller-owned, never close.
+            session: ClientSession = self._session
+        elif self._session is not None and self._session.closed:
+            # Case 2: closed external session — legacy per-call throwaway.
             session = ClientSession(timeout=ClientTimeout(total=DEFAULT_TIMEOUT))
-
-        assert session
+            temporary_session = True
+        else:
+            # Case 3: no external session — persistent Client-owned internal session.
+            if self._internal_session is None or self._internal_session.closed:
+                self._internal_session = ClientSession(
+                    timeout=ClientTimeout(total=DEFAULT_TIMEOUT)
+                )
+            session = self._internal_session
 
         try:
             async with session.request(
@@ -95,5 +137,5 @@ class Client:  # pylint: disable=too-few-public-methods
         except ClientError as err:
             raise RequestError(f"Error requesting data from {url}: {err}") from err
         finally:
-            if not use_running_session:
+            if temporary_session:
                 await session.close()

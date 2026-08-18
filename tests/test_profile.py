@@ -70,6 +70,7 @@ async def test_no_explicit_session(aresponses):
     client = Client()
     login_result = await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
     assert login_result is True
+    await client.close()
 
 
 @pytest.mark.asyncio

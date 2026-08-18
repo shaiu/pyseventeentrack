@@ -33,54 +33,58 @@ pip install pyseventeentrack
 ```python
 import asyncio
 
-from aiohttp import ClientSession
-
 from pyseventeentrack import Client
 
 
 async def main() -> None:
     """Run!"""
     client = Client()
+    try:
+        # Login to 17track.net:
+        await client.profile.login('<EMAIL>', '<PASSWORD>')
 
-    # Login to 17track.net:
-    await client.profile.login('<EMAIL>', '<PASSWORD>')
+        # Get the account ID:
+        client.profile.account_id
+        # >>> 1234567890987654321
 
-    # Get the account ID:
-    client.profile.account_id
-    # >>> 1234567890987654321
+        # Get a summary of the user's packages:
+        summary = await client.profile.summary()
+        # >>> {'In Transit': 3, 'Expired': 3, ... }
 
-    # Get a summary of the user's packages:
-    summary = await client.profile.summary()
-    # >>> {'In Transit': 3, 'Expired': 3, ... }
+        # Get all packages associated with a user's account:
+        packages = await client.profile.packages()
+        # >>> [pyseventeentrack.package.Package(..), ...]
 
-    # Get all packages associated with a user's account:
-    packages = await client.profile.packages()
-    # >>> [pyseventeentrack.package.Package(..), ...]
-    
-    # Add new packages by tracking number
-    await client.profile.add_package('<TRACKING NUMBER>', '<FRIENDLY NAME>')
+        # Add new packages by tracking number
+        await client.profile.add_package('<TRACKING NUMBER>', '<FRIENDLY NAME>')
 
-    # Add a new package and specify the carrier code
-    await client.profile.add_package(
-        '<TRACKING NUMBER>',
-        '<FRIENDLY NAME>',
-        first_carrier=190625,
-    )
+        # Add a new package and specify the carrier code
+        await client.profile.add_package(
+            '<TRACKING NUMBER>',
+            '<FRIENDLY NAME>',
+            first_carrier=190625,
+        )
 
-    # Set the carrier for an existing package by tracking number
-    await client.profile.set_carrier_by_tracking_number(
-        '<TRACKING NUMBER>', first_carrier=190625
-    )
+        # Set the carrier for an existing package by tracking number
+        await client.profile.set_carrier_by_tracking_number(
+            '<TRACKING NUMBER>', first_carrier=190625
+        )
+    finally:
+        await client.close()
 
 
 asyncio.run(main())
 ```
 
-By default, the library creates a new connection to 17track with each coroutine. If you
-are calling a large number of coroutines (or merely want to squeeze out every second of
-runtime savings possible), an
-[`aiohttp`](https://github.com/aio-libs/aiohttp) `ClientSession` can be used for connection
-pooling:
+By default, `Client()` lazily creates a single internal
+[`aiohttp`](https://github.com/aio-libs/aiohttp) `ClientSession` on the first request and
+reuses it for all subsequent calls, so login cookies are preserved across coroutines.
+Always call `await client.close()` when you are done — a `try/finally` block is the
+safest pattern, as shown in the example above.
+
+If you prefer to manage the session yourself (e.g. for connection pooling across multiple
+clients), pass an external `ClientSession`.  The library will use it as-is and will
+**never** close it — lifecycle management stays with the caller:
 
 ```python
 import asyncio
