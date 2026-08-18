@@ -7,3 +7,4 @@
 ## Contributors
 
 - Yoav Mor (https://github.com/moryoav)
+- Stavros Korokithakis (hi@stavros.io)

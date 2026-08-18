@@ -22,7 +22,11 @@ class Client:  # pylint: disable=too-few-public-methods
 
     def __init__(self, *, session: Optional[ClientSession] = None) -> None:
         """Initialize."""
+        # _session is the externally-supplied session; Client never closes it.
         self._session: Optional[ClientSession] = session
+        # _internal_session is lazily created only when no external session was
+        # supplied.  Client owns its lifecycle; close() releases it.
+        self._internal_session: Optional[ClientSession] = None
 
         self.profile: Profile = Profile(self._request)
         # This is disabled until a workaround can be found:
@@ -48,6 +52,16 @@ class Client:  # pylint: disable=too-few-public-methods
                 buyer_url.host,
             )
 
+    async def close(self) -> None:
+        """Close the internally-managed session, if any.
+
+        Has no effect when the caller supplied an external session (the caller
+        owns its lifecycle) or when no request has been made yet.  Idempotent.
+        """
+        if self._internal_session and not self._internal_session.closed:
+            await self._internal_session.close()
+            self._internal_session = None
+
     async def _request(  # pylint: disable=too-many-arguments
         self,
         method: str,
@@ -57,15 +71,22 @@ class Client:  # pylint: disable=too-few-public-methods
         params: Optional[dict] = None,
         json: Optional[dict] = None,
     ) -> dict:
-        """Make a request against the RainMachine device."""
-        use_running_session = self._session and not self._session.closed
-
-        if use_running_session:
-            session = self._session
+        """Make a request against the 17track API."""
+        if self._session is not None:
+            # Ownership: caller supplied a session at construction — use it
+            # as-is (even if closed; aiohttp will raise the appropriate error)
+            # and never close it.
+            session: ClientSession = self._session
         else:
-            session = ClientSession(timeout=ClientTimeout(total=DEFAULT_TIMEOUT))
-
-        assert session
+            # Ownership: no external session — lazily create one internal
+            # session and reuse it across all calls so that cookies (e.g.
+            # login) are preserved between requests.  The caller must call
+            # close() when done.
+            if self._internal_session is None or self._internal_session.closed:
+                self._internal_session = ClientSession(
+                    timeout=ClientTimeout(total=DEFAULT_TIMEOUT)
+                )
+            session = self._internal_session
 
         try:
             async with session.request(
@@ -94,6 +115,3 @@ class Client:  # pylint: disable=too-few-public-methods
                 return data
         except ClientError as err:
             raise RequestError(f"Error requesting data from {url}: {err}") from err
-        finally:
-            if not use_running_session:
-                await session.close()
