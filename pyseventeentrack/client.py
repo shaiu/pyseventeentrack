@@ -72,27 +72,37 @@ class Client:  # pylint: disable=too-few-public-methods
         json: Optional[dict] = None,
     ) -> dict:
         """Make a request against the 17track API."""
-        # Determine which session to use and whether we own its lifecycle.
+        # Session-ownership strategy — three cases:
         #
-        # Three cases:
-        #   1. External session supplied and open  → reuse it; caller owns it,
-        #      never close it.
-        #   2. External session supplied but closed → create a throwaway session
-        #      for this call only and close it in finally (pre-patch behaviour,
-        #      preserves backwards compatibility).
-        #   3. No external session                 → lazily create/reuse
-        #      _internal_session; caller must call close() when done.
+        #   1. External session supplied and open:
+        #      Reuse it as-is.  Caller owns the lifecycle; Client never closes it.
+        #      Cookies (including post-login copies) accumulate in the caller's jar
+        #      and survive across calls for as long as the caller keeps it open.
+        #
+        #   2. External session supplied but already closed:
+        #      Legacy per-call fallback — create a fresh throwaway ClientSession
+        #      for this single request and close it in finally.  This preserves
+        #      pre-patch behaviour for callers that passed a closed session.
+        #      Note: each call gets its own empty cookie jar, so authenticated
+        #      multi-request flows (login → packages) are NOT supported via this
+        #      path; use an open external session or bare Client() instead.
+        #
+        #   3. No external session supplied (bare Client()):
+        #      Lazily create one internal ClientSession on the first request and
+        #      reuse it for all subsequent calls.  Cookies survive across calls,
+        #      making login → packages work correctly.  Caller must call close()
+        #      when done; Client owns the lifecycle.
         temporary_session: bool = False
 
         if self._session is not None and not self._session.closed:
-            # Case 1: open external session — reuse, never close.
+            # Case 1: open external session — reuse, caller-owned, never close.
             session: ClientSession = self._session
         elif self._session is not None and self._session.closed:
-            # Case 2: closed external session — throwaway, close in finally.
+            # Case 2: closed external session — legacy per-call throwaway.
             session = ClientSession(timeout=ClientTimeout(total=DEFAULT_TIMEOUT))
             temporary_session = True
         else:
-            # Case 3: no external session — persistent internal session.
+            # Case 3: no external session — persistent Client-owned internal session.
             if self._internal_session is None or self._internal_session.closed:
                 self._internal_session = ClientSession(
                     timeout=ClientTimeout(total=DEFAULT_TIMEOUT)

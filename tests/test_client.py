@@ -3,6 +3,7 @@
 import aiohttp
 import pytest
 
+import pyseventeentrack.client as client_module
 from pyseventeentrack import Client
 from pyseventeentrack.errors import RequestError
 
@@ -174,19 +175,31 @@ async def test_close_does_not_close_external_session(aresponses):
 
 
 @pytest.mark.asyncio
-async def test_external_session_closed_uses_temporary_session(aresponses):
+async def test_external_session_closed_uses_temporary_session(aresponses, monkeypatch):
     """Test that a closed external session falls back to a per-call throwaway.
 
-    Pre-patch behaviour: when the caller-supplied session is already closed,
-    _request creates a temporary ClientSession for that call only and closes it
-    in finally.  This preserves backwards compatibility — callers that relied on
-    the library working even with a closed session are not broken.
+    This is an isolated per-call compatibility fallback: each call gets its own
+    fresh ClientSession that is closed in finally.  Because each throwaway has an
+    empty cookie jar, authenticated multi-request flows (login → packages) are NOT
+    supported via this path — that is unchanged from pre-patch behaviour.
 
-    Verification:
-    - The request succeeds (temporary session is open and functional).
-    - _internal_session is never set (the throwaway is not retained).
-    - The external session remains closed throughout (we never reopen it).
+    Assertions:
+    - The throwaway session is open during the request and closed afterwards.
+    - _internal_session is never set (the throwaway is not retained on Client).
+    - The external closed session is untouched throughout.
+    - The throwaway is also closed when the request raises (HTTP error path).
     """
+    created_sessions: list = []
+    _real_ClientSession = aiohttp.ClientSession
+
+    def session_factory(*args, **kwargs):
+        s = _real_ClientSession(*args, **kwargs)
+        created_sessions.append(s)
+        return s
+
+    monkeypatch.setattr(client_module, "ClientSession", session_factory)
+
+    # --- successful request path ---
     aresponses.add(
         "random.domain",
         "/some/path",
@@ -194,18 +207,37 @@ async def test_external_session_closed_uses_temporary_session(aresponses):
         aresponses.Response(text='{"Code": 0}', status=200),
     )
 
-    session = aiohttp.ClientSession()
-    await session.close()
-    assert session.closed
+    closed_session = _real_ClientSession()
+    await closed_session.close()
+    assert closed_session.closed
 
-    client = Client(session=session)
+    client = Client(session=closed_session)
     result = await client._request("get", "https://random.domain/some/path")  # pylint: disable=protected-access
 
-    # Request succeeded via the temporary session.
     assert result == {"Code": 0}
-
-    # No internal session was created or retained.
+    assert len(created_sessions) == 1
+    throwaway_ok = created_sessions[0]
+    # Throwaway must be closed after the call completes.
+    assert throwaway_ok.closed
+    # Client must not retain it as _internal_session.
     assert client._internal_session is None  # pylint: disable=protected-access
+    # External session untouched.
+    assert closed_session.closed
 
-    # The external session is still closed (we never touched it).
-    assert session.closed
+    # --- HTTP error path: throwaway must also be closed on exception ---
+    aresponses.add(
+        "random.domain",
+        "/some/path",
+        "get",
+        aresponses.Response(text="", status=500),
+    )
+
+    with pytest.raises(RequestError):
+        await client._request("get", "https://random.domain/some/path")  # pylint: disable=protected-access
+
+    assert len(created_sessions) == 2
+    throwaway_err = created_sessions[1]
+    # Throwaway from the error path must also be closed.
+    assert throwaway_err.closed
+    # Still no internal session retained.
+    assert client._internal_session is None  # pylint: disable=protected-access

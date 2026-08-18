@@ -33,7 +33,7 @@ CI (`.github/workflows/ci.yaml`) runs ruff-format via pre-commit, then pytest on
 
 `Client` owns all HTTP concerns and nothing else. It builds `Profile` by passing its own bound `_request` coroutine in (`client.py:27`), so `Profile` never touches `aiohttp` and is trivially testable. Add new API surfaces the same way: a class taking `request: Callable[..., Coroutine]`, wired up in `Client.__init__`.
 
-`Client._request` also decides session ownership: an externally supplied `ClientSession` is reused and left open; otherwise a throwaway session is created per call with a 10s timeout and closed in `finally`.
+`Client._request` decides session ownership across three cases: (1) an externally supplied `ClientSession` that is open is reused and never closed — the caller owns it; (2) an externally supplied session that is already closed gets a legacy per-call throwaway (fresh session, closed in `finally`) — this preserves pre-patch behaviour but does not carry cookies across calls, so authenticated multi-request flows are unsupported via this path; (3) no external session — a single internal `ClientSession` is lazily created on the first request and reused for all subsequent calls so that cookies survive (e.g. login → packages), and the caller must call `Client.close()` to release it.
 
 ### Two hosts, one cookie jar
 
