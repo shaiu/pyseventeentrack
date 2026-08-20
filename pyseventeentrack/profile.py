@@ -19,6 +19,7 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 API_URL_BUYER: str = "https://buyer.17track.net/orderapi/call"
 API_URL_USER: str = "https://user.17track.net/user-api/v1/sign-in-by-password"
 PACKAGES_PER_PAGE: int = 40
+MAX_PACKAGE_PAGES: int = 100
 
 
 class Profile:
@@ -119,9 +120,13 @@ class Profile:
                 break
 
             page_info = (packages_resp or {}).get("pageInfo") or {}
-            if page * (page_info.get("PerPage") or PACKAGES_PER_PAGE) >= (
-                page_info.get("TotalCount") or 0
-            ):
+            if len(packages) >= (page_info.get("TotalCount") or 0):
+                break
+            if page >= MAX_PACKAGE_PAGES:
+                _LOGGER.warning(
+                    "Stopping package pagination after %s pages",
+                    MAX_PACKAGE_PAGES,
+                )
                 break
             page += 1
 
