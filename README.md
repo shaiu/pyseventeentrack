@@ -38,8 +38,7 @@ from pyseventeentrack import Client
 
 async def main() -> None:
     """Run!"""
-    client = Client()
-    try:
+    async with Client() as client:
         # Login to 17track.net:
         await client.profile.login('<EMAIL>', '<PASSWORD>')
 
@@ -69,8 +68,6 @@ async def main() -> None:
         await client.profile.set_carrier_by_tracking_number(
             '<TRACKING NUMBER>', first_carrier=190625
         )
-    finally:
-        await client.close()
 
 
 asyncio.run(main())
@@ -79,8 +76,16 @@ asyncio.run(main())
 By default, `Client()` lazily creates a single internal
 [`aiohttp`](https://github.com/aio-libs/aiohttp) `ClientSession` on the first request and
 reuses it for all subsequent calls, so login cookies are preserved across coroutines.
-Always call `await client.close()` when you are done — a `try/finally` block is the
-safest pattern, as shown in the example above.
+That session must be released when you are done: use `async with Client() as client:` as
+shown above, or call `await client.close()` yourself. If you do neither, aiohttp reports
+`Unclosed client session` when the client is garbage-collected and the socket stays open
+until then.
+
+Releasing the session also matters if you reuse one `Client` across more than one event
+loop (successive `asyncio.run()` calls, say). `aiohttp` binds a `ClientSession` to the
+loop that created it, so a session held open past the end of its loop raises
+`RuntimeError: Event loop is closed` on the next call. A `Client` is reusable after
+`close()` — the next request creates a fresh session.
 
 If you prefer to manage the session yourself (e.g. for connection pooling across multiple
 clients), pass an external `ClientSession`.  The library will use it as-is and will

@@ -31,9 +31,9 @@ CI (`.github/workflows/ci.yaml`) runs ruff-format via pre-commit, then pytest on
 
 ### Request injection
 
-`Client` owns all HTTP concerns and nothing else. It builds `Profile` by passing its own bound `_request` coroutine in (`client.py:27`), so `Profile` never touches `aiohttp` and is trivially testable. Add new API surfaces the same way: a class taking `request: Callable[..., Coroutine]`, wired up in `Client.__init__`.
+`Client` owns all HTTP concerns and nothing else. It builds `Profile` by passing its own bound `_request` coroutine in (`client.py:31`), so `Profile` never touches `aiohttp` and is trivially testable. Add new API surfaces the same way: a class taking `request: Callable[..., Coroutine]`, wired up in `Client.__init__`.
 
-`Client._request` decides session ownership across three cases: (1) an externally supplied `ClientSession` that is open is reused and never closed — the caller owns it; (2) an externally supplied session that is already closed gets a legacy per-call throwaway (fresh session, closed in `finally`) — this preserves pre-patch behaviour but does not carry cookies across calls, so authenticated multi-request flows are unsupported via this path; (3) no external session — a single internal `ClientSession` is lazily created on the first request and reused for all subsequent calls so that cookies survive (e.g. login → packages), and the caller must call `Client.close()` to release it.
+`Client._request` decides session ownership across three cases: (1) an externally supplied `ClientSession` that is open is reused and never closed — the caller owns it; (2) an externally supplied session that is already closed gets a legacy per-call throwaway (fresh session, closed in `finally`) — this preserves pre-patch behaviour but does not carry cookies across calls, so authenticated multi-request flows are unsupported via this path; (3) no external session — a single internal `ClientSession` is lazily created on the first request and reused for all subsequent calls so that cookies survive (e.g. login → packages), and the caller must release it via `async with Client()` or an explicit `Client.close()`, or aiohttp reports an unclosed session at GC time. Because aiohttp binds a `ClientSession` to the loop that created it, a `Client` held open across two event loops raises `RuntimeError: Event loop is closed`; `close()` resets the internal session, so a released `Client` stays reusable.
 
 ### Two hosts, one cookie jar
 
@@ -42,7 +42,7 @@ Auth spans two domains:
 - `API_URL_USER` = `user.17track.net/user-api/v1/sign-in-by-password` — login only.
 - `API_URL_BUYER` = `buyer.17track.net/orderapi/call` — everything else, dispatched by a `"method"` field in the JSON body (`GetTrackInfoList`, `GetIndexData`, `AddTrackNo`, `SetTrackRemark`, `SetTrackCarrier`, `SetTrackArchived`).
 
-The login endpoint sets cookies with no `Domain` attribute, so per RFC 6265 aiohttp will only replay them to `user.17track.net`. `Client._copy_cookies_to_buyer_domain` runs after any request to `API_URL_USER` and copies the jar across to the buyer host (`client.py:31`). **Without this, every post-login call returns a non-zero `Code` and raises `NotLoggedInError`.** Any change to the login flow or session handling must preserve this hop.
+The login endpoint sets cookies with no `Domain` attribute, so per RFC 6265 aiohttp will only replay them to `user.17track.net`. `Client._copy_cookies_to_buyer_domain` runs after any request to `API_URL_USER` and copies the jar across to the buyer host (`client.py:35`). **Without this, every post-login call returns a non-zero `Code` and raises `NotLoggedInError`.** Any change to the login flow or session handling must preserve this hop.
 
 Passwords are RSA-encrypted client-side before being sent (`encrypt.py`) with a hardcoded 17track public key, PKCS1v15 padding, base64-encoded. This mirrors what the website's JS does; it is not a security boundary of ours.
 

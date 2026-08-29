@@ -52,14 +52,28 @@ class Client:  # pylint: disable=too-few-public-methods
                 buyer_url.host,
             )
 
+    async def __aenter__(self) -> "Client":
+        """Enter the async context manager."""
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        """Exit the async context manager, releasing the internal session."""
+        await self.close()
+
     async def close(self) -> None:
         """Close the internally-managed session, if any.
 
         Has no effect when the caller supplied an external session (the caller
         owns its lifecycle) or when no request has been made yet.  Idempotent.
+
+        The Client stays usable afterwards: the next request lazily creates a
+        fresh internal session.  That is what makes a bare Client() safe to
+        reuse across successive event loops, since aiohttp binds a
+        ClientSession to the loop that created it.
         """
-        if self._internal_session and not self._internal_session.closed:
-            await self._internal_session.close()
+        if self._internal_session is not None:
+            if not self._internal_session.closed:
+                await self._internal_session.close()
             self._internal_session = None
 
     async def _request(  # pylint: disable=too-many-arguments
@@ -90,8 +104,10 @@ class Client:  # pylint: disable=too-few-public-methods
         #   3. No external session supplied (bare Client()):
         #      Lazily create one internal ClientSession on the first request and
         #      reuse it for all subsequent calls.  Cookies survive across calls,
-        #      making login → packages work correctly.  Caller must call close()
-        #      when done; Client owns the lifecycle.
+        #      making login → packages work correctly.  Client owns the
+        #      lifecycle; the caller must release it with `async with Client()`
+        #      or an explicit close(), or aiohttp will report an unclosed
+        #      session when the Client is garbage-collected.
         temporary_session: bool = False
 
         if self._session is not None and not self._session.closed:

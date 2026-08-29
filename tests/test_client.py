@@ -1,5 +1,10 @@
 """Define tests for the client object."""
 
+import asyncio
+import threading
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import aiohttp
 import pytest
 
@@ -241,3 +246,126 @@ async def test_external_session_closed_uses_temporary_session(aresponses, monkey
     assert throwaway_err.closed
     # Still no internal session retained.
     assert client._internal_session is None  # pylint: disable=protected-access
+
+
+@contextmanager
+def json_server():
+    """Serve a fixed JSON body from a background thread.
+
+    A real socket server is needed here because these tests drive more than one
+    event loop, and aresponses is itself loop-bound.
+    """
+
+    class Handler(BaseHTTPRequestHandler):
+        """Answer every GET with a minimal buyer-style envelope."""
+
+        # Names below are mandated by BaseHTTPRequestHandler.
+        def do_GET(self):  # pylint: disable=invalid-name
+            """Handle a GET request."""
+            body = b'{"Code": 0}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):  # pylint: disable=redefined-builtin
+            """Silence the default stderr access log."""
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.asyncio
+async def test_async_context_manager_closes_internal_session(aresponses):
+    """Test that `async with Client()` releases the internal session on exit.
+
+    Without this, the documented bare-Client() flow leaks the persistent
+    session: aiohttp reports "Unclosed client session" and "Unclosed connector"
+    when the Client is garbage-collected, and the socket stays open until then.
+    """
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+
+    async with Client() as client:
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        internal = client._internal_session  # pylint: disable=protected-access
+        assert internal is not None
+        assert not internal.closed
+
+    assert internal.closed
+    assert client._internal_session is None  # pylint: disable=protected-access
+
+
+@pytest.mark.asyncio
+async def test_async_context_manager_leaves_external_session_open(aresponses):
+    """Test that `async with Client(session=...)` never closes the caller's session."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        async with Client(session=session) as client:
+            await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+
+        assert not session.closed
+
+
+@pytest.mark.asyncio
+async def test_close_clears_reference_when_session_already_closed(aresponses):
+    """Test that close() drops a session that was closed out from under it."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+
+    client = Client()
+    await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+
+    internal = client._internal_session  # pylint: disable=protected-access
+    assert internal is not None
+    await internal.close()
+
+    await client.close()
+
+    # A stale closed session must not stay pinned to the Client.
+    assert client._internal_session is None  # pylint: disable=protected-access
+
+
+def test_client_reusable_across_event_loops():
+    """Test that a Client can be reused across successive event loops.
+
+    aiohttp binds a ClientSession to the loop that created it, so a persistent
+    internal session that is never released raises "Event loop is closed" the
+    second time the Client is driven from a fresh asyncio.run().  Releasing it
+    on context-manager exit means the next loop gets a fresh session.
+    """
+    with json_server() as url:
+        client = Client()
+
+        async def call():
+            async with client:
+                return await client._request("get", url)  # pylint: disable=protected-access
+
+        assert asyncio.run(call()) == {"Code": 0}
+        assert asyncio.run(call()) == {"Code": 0}
