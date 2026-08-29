@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Callable, Coroutine, List, Optional, Tuple, Union
+from typing import Callable, Coroutine, List, Optional, Set, Tuple, Union
 
 from .encrypt import rsa_encrypt
 from .errors import (
@@ -62,6 +62,8 @@ class Profile:
     ) -> list:
         """Get the list of packages associated with the account."""
         packages: List[Package] = []
+        seen_page_signatures: Set[Tuple[Tuple[Optional[str], str], ...]] = set()
+        total_count: Optional[int] = None
         page = 1
         while True:
             packages_resp: dict = await self._request(
@@ -92,6 +94,28 @@ class Profile:
                 )
 
             rows = (packages_resp or {}).get("Json") or []
+            if not rows:
+                break
+
+            if (
+                tuple(
+                    (package.get("FTrackInfoId"), package["FTrackNo"])
+                    for package in rows
+                )
+                in seen_page_signatures
+            ):
+                _LOGGER.warning(
+                    "Stopping package pagination because page %s repeated package IDs",
+                    page,
+                )
+                break
+            seen_page_signatures.add(
+                tuple(
+                    (package.get("FTrackInfoId"), package["FTrackNo"])
+                    for package in rows
+                )
+            )
+
             for package in rows:
                 event: dict = {}
                 last_event_raw: str = package.get("FLastEvent")
@@ -116,11 +140,20 @@ class Profile:
                 }
                 packages.append(Package(package["FTrackNo"], **kwargs))
 
-            if not rows:
+            if total_count is None:
+                total_count = ((packages_resp or {}).get("pageInfo") or {}).get(
+                    "TotalCount"
+                ) or None
+            if total_count is not None and len(packages) >= total_count:
                 break
-
-            page_info = (packages_resp or {}).get("pageInfo") or {}
-            if len(packages) >= (page_info.get("TotalCount") or 0):
+            if total_count is None and len(rows) < PACKAGES_PER_PAGE:
+                _LOGGER.debug(
+                    "Stopping package pagination on page %s because TotalCount "
+                    "is unavailable and the page returned %s of %s requested packages",
+                    page,
+                    len(rows),
+                    PACKAGES_PER_PAGE,
+                )
                 break
             if page >= MAX_PACKAGE_PAGES:
                 _LOGGER.warning(
@@ -128,6 +161,11 @@ class Profile:
                     MAX_PACKAGE_PAGES,
                 )
                 break
+            if total_count is None:
+                _LOGGER.debug(
+                    "Continuing package pagination after full page %s without TotalCount",
+                    page,
+                )
             page += 1
 
         return packages

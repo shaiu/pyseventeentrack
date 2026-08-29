@@ -57,7 +57,7 @@ Reads defensively treat a `None` body as `{}` and default `Code` to `0`, because
 
 Package rows are opaque `F`-prefixed keys, and the latest event arrives as a **JSON string inside the JSON** under `FLastEvent`, with single-letter keys (`a` timestamp, `c`/`d` location parts, `z` description) — parsed in `Profile.packages`.
 
-`Profile.packages` follows `pageInfo.TotalCount` by counting the rows received across response pages, stops early if the API returns an empty page, and caps pagination at 100 pages to bound requests if the unofficial API repeats a non-empty page.
+`Profile.packages` latches the first positive `pageInfo.TotalCount` and counts the rows received across response pages. Without a known total it continues after full pages and stops after a partial or empty page. Repeated page signatures are rejected before their rows are appended, and pagination is capped at 100 pages.
 
 ### Package: int codes → human strings
 
