@@ -97,30 +97,21 @@ class Profile:
             if not rows:
                 break
 
-            if (
-                tuple(
-                    (package.get("FTrackInfoId"), package["FTrackNo"])
-                    for package in rows
-                )
-                in seen_page_signatures
-            ):
+            page_signature = tuple(
+                (package.get("FTrackInfoId"), package["FTrackNo"]) for package in rows
+            )
+            if page_signature in seen_page_signatures:
                 _LOGGER.warning(
                     "Stopping package pagination because page %s repeated package IDs",
                     page,
                 )
                 break
-            seen_page_signatures.add(
-                tuple(
-                    (package.get("FTrackInfoId"), package["FTrackNo"])
-                    for package in rows
-                )
-            )
+            seen_page_signatures.add(page_signature)
 
             for package in rows:
                 event: dict = {}
-                last_event_raw: str = package.get("FLastEvent")
-                if last_event_raw:
-                    event = json.loads(last_event_raw)
+                if package.get("FLastEvent"):
+                    event = json.loads(package["FLastEvent"])
 
                 kwargs: dict = {
                     "id": package.get("FTrackInfoId"),
@@ -144,16 +135,18 @@ class Profile:
                 total_count = ((packages_resp or {}).get("pageInfo") or {}).get(
                     "TotalCount"
                 ) or None
-            if total_count is not None and len(packages) >= total_count:
-                break
-            if total_count is None and len(rows) < PACKAGES_PER_PAGE:
-                _LOGGER.debug(
-                    "Stopping package pagination on page %s because TotalCount "
-                    "is unavailable and the page returned %s of %s requested packages",
-                    page,
-                    len(rows),
-                    PACKAGES_PER_PAGE,
-                )
+            if len(rows) < PACKAGES_PER_PAGE and (
+                total_count is None or len(packages) >= total_count
+            ):
+                if total_count is None:
+                    _LOGGER.debug(
+                        "Stopping package pagination on page %s because TotalCount "
+                        "is unavailable and the page returned %s of %s requested "
+                        "packages",
+                        page,
+                        len(rows),
+                        PACKAGES_PER_PAGE,
+                    )
                 break
             if page >= MAX_PACKAGE_PAGES:
                 _LOGGER.warning(

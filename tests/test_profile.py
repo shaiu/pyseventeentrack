@@ -149,6 +149,45 @@ async def test_packages_paginates(aresponses):
 
 
 @pytest.mark.asyncio
+async def test_packages_continues_after_full_page_with_small_total_count(
+    aresponses, monkeypatch
+):
+    """Test that a full page continues when TotalCount may mean page count."""
+    monkeypatch.setattr("pyseventeentrack.profile.PACKAGES_PER_PAGE", 5)
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("packages_response.json"), status=200),
+        body_pattern=re.compile(r'.*"Page": 1.*"PerPage": 5.*'),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(
+            text=load_fixture("packages_response_empty.json"), status=200
+        ),
+        body_pattern=re.compile(r'.*"Page": 2.*"PerPage": 5.*'),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        packages = await client.profile.packages()
+        assert len(packages) == 5
+        aresponses.assert_plan_strictly_followed()
+
+
+@pytest.mark.asyncio
 async def test_packages_continues_after_full_page_without_total_count(
     aresponses, monkeypatch, caplog
 ):
