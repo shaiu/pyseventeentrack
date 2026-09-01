@@ -1,0 +1,74 @@
+{
+  "pageInfo": {
+    "Page": 1,
+    "PerPage": 40,
+    "TotalCount": 1
+  },
+  "Json": [
+    {
+      "FTrackInfoId": "1234567890987654321",
+      "FTrackNo": "1234567890987654321",
+      "FFirstCarrier": 0,
+      "FFirstCarrierSource": 2,
+      "FSecondCarrier": 0,
+      "FSecondCarrierSource": 2,
+      "FLastEvent": "{\"a\":\"2019-02-26 08:05:34\",\"dd\":{\"d\":\"2019-02-26\",\"t\":\"08:05:34\",\"tz\":\"-07:00\"},\"b\":null,\"c\":\"\",\"d\":\"Spain\",\"z\":\"Arrival at Destination Post\"}",
+      "FIsArchived": false,
+      "FRemark": "",
+      "FTrackStateType": 0,
+      "FCreateTime": "2019-03-02 10:02:03"
+    },
+    {
+      "FTrackInfoId": "1234567890987654321",
+      "FTrackNo": "1234567890987654321",
+      "FFirstCarrier": 0,
+      "FFirstCarrierSource": 2,
+      "FSecondCarrier": 0,
+      "FSecondCarrierSource": 2,
+      "FLastEvent": "{\"a\":\"2019-02-26 15:05:34\",\"dd\":{\"d\":\"2019-02-26\",\"t\":\"15:05:34\",\"tz\":null},\"b\":null,\"c\":\"\",\"d\":\"Spain\",\"z\":\"Arrival at Destination Post\"}",
+      "FIsArchived": false,
+      "FRemark": "",
+      "FTrackStateType": 0,
+      "FCreateTime": "2019-03-02 10:02:03"
+    },
+    {
+      "FTrackInfoId": "1234567890987654321",
+      "FTrackNo": "1234567890987654321",
+      "FFirstCarrier": 0,
+      "FFirstCarrierSource": 2,
+      "FSecondCarrier": 0,
+      "FSecondCarrierSource": 2,
+      "FLastEvent": "{\"a\":\"2019-02-26 15:05:34\",\"dd\":{\"d\":\"2019-02-26\",\"tz\":\"-07:00\"},\"b\":null,\"c\":\"\",\"d\":\"Spain\",\"z\":\"Arrival at Destination Post\"}",
+      "FIsArchived": false,
+      "FRemark": "",
+      "FTrackStateType": 0,
+      "FCreateTime": "2019-03-02 10:02:03"
+    },
+    {
+      "FTrackInfoId": "1234567890987654321",
+      "FTrackNo": "1234567890987654321",
+      "FFirstCarrier": 0,
+      "FFirstCarrierSource": 2,
+      "FSecondCarrier": 0,
+      "FSecondCarrierSource": 2,
+      "FLastEvent": "{\"a\":\"2019-02-26 15:05:34\",\"dd\":{\"d\":\"2019-02-26\",\"t\":\"42:05:34\",\"tz\":\"-07:00\"},\"b\":null,\"c\":\"\",\"d\":\"Spain\",\"z\":\"Arrival at Destination Post\"}",
+      "FIsArchived": false,
+      "FRemark": "",
+      "FTrackStateType": 0,
+      "FCreateTime": "2019-03-02 10:02:03"
+    },
+    {
+      "FTrackInfoId": "1234567890987654321",
+      "FTrackNo": "1234567890987654321",
+      "FFirstCarrier": 0,
+      "FFirstCarrierSource": 2,
+      "FSecondCarrier": 0,
+      "FSecondCarrierSource": 2,
+      "FLastEvent": "{\"a\":\"2019-02-26 15:05:34\",\"dd\":[\"2019-02-26\",\"42:05:34\",\"-07:00\"],\"b\":null,\"c\":\"\",\"d\":\"Spain\",\"z\":\"Arrival at Destination Post\"}",
+      "FIsArchived": false,
+      "FRemark": "",
+      "FTrackStateType": 0,
+      "FCreateTime": "2019-03-02 10:02:03"
+    }
+  ]
+}

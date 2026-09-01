@@ -1,7 +1,7 @@
 """Define a simple structure for a package."""
 
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import attr
 from pytz import UTC, timezone
@@ -266,7 +266,7 @@ class Package:  # pylint: disable=too-few-public-methods,too-many-instance-attri
     friendly_name: Optional[str] = attr.ib(default=None)
     info_text: Optional[str] = attr.ib(default=None)
     location: str = attr.ib(default="")
-    timestamp: str = attr.ib(default="")
+    timestamp: Union[str, datetime, None] = attr.ib(default="")
     origin_country: int = attr.ib(default=0)
     package_type: int = attr.ib(default=0)
     status: int = attr.ib(default=0)
@@ -288,19 +288,23 @@ class Package:  # pylint: disable=too-few-public-methods,too-many-instance-attri
 
         if self.timestamp is not None:
             tz = timezone(self.tz)
-            try:
-                timestamp = tz.localize(
-                    datetime.strptime(self.timestamp, "%Y-%m-%d %H:%M")
-                )
-            except ValueError:
+            if isinstance(self.timestamp, datetime):
+                timestamp = self.timestamp
+                if timestamp.tzinfo is None:
+                    timestamp = tz.localize(timestamp)
+            else:
                 try:
                     timestamp = tz.localize(
-                        datetime.strptime(self.timestamp, "%Y-%m-%d %H:%M:%S")
+                        datetime.strptime(self.timestamp, "%Y-%m-%d %H:%M")
                     )
                 except ValueError:
-                    timestamp = datetime(1970, 1, 1, tzinfo=UTC)
+                    try:
+                        timestamp = tz.localize(
+                            datetime.strptime(self.timestamp, "%Y-%m-%d %H:%M:%S")
+                        )
+                    except ValueError:
+                        timestamp = datetime(1970, 1, 1, tzinfo=UTC)
 
-            if self.tz != "UTC":
-                timestamp = timestamp.astimezone(UTC)
+            timestamp = timestamp.astimezone(UTC)
 
             object.__setattr__(self, "timestamp", timestamp)
