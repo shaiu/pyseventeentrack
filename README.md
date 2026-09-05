@@ -15,6 +15,9 @@ Since this is uses an unofficial API, there's no guarantee that 17track.net
 will provide every field for every package, all the time. Additionally, this
 API may stop working at any moment.
 
+**Important:** You must sign up for a **Personal Registration** account on [17track.net](http://www.17track.net/), otherwise API
+may return `Not logged in (Code: -6, Message: 未登录)`
+
 # Python Versions
 
 `pyseventeentrack` is currently supported on:
