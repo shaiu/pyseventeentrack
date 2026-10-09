@@ -1,54 +1,87 @@
 #!/usr/bin/env bash
-set -e
+# Release in two steps, because dev only takes changes through pull requests:
+#
+#   script/release prepare 1.3.0
+#       Open a PR against dev that bumps the version in pyproject.toml.
+#
+#   script/release publish 1.3.0 [gh release create options...]
+#       After that PR is merged: create the GitHub release v1.3.0 on the tip of
+#       dev. Creating the release triggers ci-cd.yml, which publishes to PyPI.
+#       Options are passed to `gh release create` (e.g. --notes-file notes.md);
+#       without any, the notes are generated from the merged PRs.
+set -euo pipefail
 
-REPO_PATH="$( dirname "$( cd "$(dirname "$0")" ; pwd -P )" )"
-
-if [ "$(git rev-parse --abbrev-ref HEAD)" != "dev" ]; then
-    echo "Refusing to publish a release from a branch other than dev"
+usage() {
+    echo "Usage: script/release prepare <version>" >&2
+    echo "       script/release publish <version> [gh release create options...]" >&2
     exit 1
-fi
-
-if [ -z "$(command -v poetry)" ]; then
-    echo "Poetry needs to be installed to run this script: pip3 install poetry"
-    exit 1
-fi
-
-function generate_version {
-    latest_tag="$(git tag --sort=committerdate | tail -1)"
-    month="$(date +'%Y.%m')"
-
-    if [[ "$latest_tag" =~ "$month".* ]]; then
-        patch="$(echo "$latest_tag" | cut -d . -f 3)"
-        ((patch=patch+1))
-        echo "$month.$patch"
-    else
-        echo "$month.0"
-    fi
 }
 
-# Temporarily uninstall pre-commit hooks so that we can push to dev and master:
-pre-commit uninstall
+fail() {
+    echo "$1" >&2
+    exit 1
+}
 
-# Pull the latest dev:
-git pull origin dev
+[ $# -ge 2 ] || usage
+command="$1"
+version="$2"
+shift 2
 
-# Generate the next version (in the format YEAR.MONTH.RELEASE_NUMER):
-new_version=$(generate_version)
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Version must look like 1.2.3, got: $version"
+command -v gh >/dev/null || fail "The GitHub CLI (gh) is required: https://cli.github.com"
 
-# Update the PyPI package version:
-sed -i "" "s/^version = \".*\"/version = \"$new_version\"/g" "$REPO_PATH/pyproject.toml"
-git add pyproject.toml
+tag="v$version"
+git fetch --quiet --tags origin dev
 
-# Commit, tag, and push:
-git commit -m "Bump version to $new_version"
-git tag "$new_version"
-git push && git push --tags
+dev_version() {
+    git show origin/dev:pyproject.toml | sed -n 's/^version = "\(.*\)"$/\1/p'
+}
 
-# Merge dev into master:
-git checkout master
-git merge dev
-git push
-git checkout dev
+prepare() {
+    [ $# -eq 0 ] || usage
 
-# Re-initialize pre-commit:
-pre-commit install
+    latest_tag="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+    newest="$(printf '%s\n%s\n' "${latest_tag#v}" "$version" | sort -V | tail -1)"
+    if [ "$version" = "${latest_tag#v}" ] || [ "$newest" != "$version" ]; then
+        fail "$version is not newer than the latest release $latest_tag"
+    fi
+
+    branch="release-$version"
+    if git show-ref --quiet "refs/heads/$branch" || git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+        fail "Branch $branch already exists"
+    fi
+
+    # Work in a throwaway worktree so the caller's checkout is never touched.
+    worktree="$(mktemp -d)"
+    trap 'git worktree remove --force "$worktree"; git branch --quiet -D "$branch"' EXIT
+    git worktree add --quiet -b "$branch" "$worktree" origin/dev
+
+    sed -i.bak "s/^version = \".*\"/version = \"$version\"/" "$worktree/pyproject.toml"
+    rm "$worktree/pyproject.toml.bak"
+    git -C "$worktree" diff --quiet && fail "pyproject.toml is already at $version"
+
+    git -C "$worktree" commit --quiet -am "Bump version to $version"
+    git -C "$worktree" push --quiet -u origin "$branch"
+    gh pr create --base dev --head "$branch" --title "Bump version to $version" \
+        --body "Version bump for the $version release. After merge, run \`script/release publish $version\`."
+}
+
+publish() {
+    [ "$(dev_version)" = "$version" ] \
+        || fail "dev is at version $(dev_version), not $version. Merge the bump PR from 'script/release prepare $version' first."
+    git ls-remote --exit-code --tags origin "$tag" >/dev/null && fail "Tag $tag already exists"
+
+    # The full SHA: GitHub rejects an abbreviated SHA as a release target.
+    sha="$(git rev-parse origin/dev)"
+    ci="$(gh run list --commit "$sha" --workflow CI --json conclusion --jq '.[0].conclusion // empty')"
+    [ "$ci" = "success" ] || fail "CI on dev ($sha) is '${ci:-pending or not run}', not 'success'. Wait for it or fix it first."
+
+    [ $# -gt 0 ] || set -- --generate-notes
+    gh release create "$tag" --target "$sha" "$@"
+}
+
+case "$command" in
+    prepare) prepare "$@" ;;
+    publish) publish "$@" ;;
+    *) usage ;;
+esac
