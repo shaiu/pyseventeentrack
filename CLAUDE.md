@@ -94,4 +94,4 @@ JSON fixtures live in `tests/fixtures/` and are loaded by name with `load_fixtur
 
 `script/release` (run from `dev` only) generates a `YEAR.MONTH.N` version, rewrites `version` in `pyproject.toml`, commits, tags, pushes, and merges `dev` into `master`. It temporarily uninstalls pre-commit to get past the branch guard. Publishing to PyPI is triggered separately by creating a **GitHub Release** (`ci-cd.yml`).
 
-Note the version scheme in `pyproject.toml` is currently semver-ish (`1.1.3`), which `script/release` will overwrite with the date-based scheme on the next run.
+Note the version scheme in `pyproject.toml` is currently semver-ish (`1.2.0`), which `script/release` will overwrite with the date-based scheme on the next run.
