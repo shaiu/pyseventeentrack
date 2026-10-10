@@ -3,6 +3,7 @@
 import json
 import logging
 from typing import Callable, Coroutine, List, Optional, Set, Tuple, Union
+from datetime import datetime
 
 from .encrypt import rsa_encrypt
 from .errors import (
@@ -113,6 +114,15 @@ class Profile:
                 if package.get("FLastEvent"):
                     event = json.loads(package["FLastEvent"])
 
+                timestamp = event.get("a")
+                dd = event.get("dd")
+                if dd:
+                    try:
+                        dt_str = f"{dd['d']}T{dd['t']}{dd.get('tz') or ''}"
+                        timestamp = datetime.fromisoformat(dt_str)
+                    except (KeyError, ValueError, TypeError):
+                        pass
+                        
                 kwargs: dict = {
                     "id": package.get("FTrackInfoId"),
                     "destination_country": package.get("FSecondCountry", 0),
@@ -121,7 +131,7 @@ class Profile:
                     "location": " ".join(
                         [event.get("c", ""), event.get("d", "")]
                     ).strip(),
-                    "timestamp": event.get("a"),
+                    "timestamp": timestamp,
                     "tz": tz,
                     "first_carrier": package.get("FFirstCarrier") or 0,
                     "origin_country": package.get("FFirstCountry", 0),

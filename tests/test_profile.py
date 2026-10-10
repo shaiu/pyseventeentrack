@@ -104,6 +104,34 @@ async def test_packages(aresponses):
         assert packages[2].location == "Milano Italy"
         assert packages[3].location == ""
 
+@pytest.mark.asyncio
+async def test_packages_timezones(aresponses):
+    """Test getting packages."""
+    aresponses.add(
+        "user.17track.net",
+        "/user-api/v1/sign-in-by-password",
+        "post",
+        aresponses.Response(
+            text=load_fixture("authentication_success_response.json"), status=200
+        ),
+    )
+    aresponses.add(
+        "buyer.17track.net",
+        "/orderapi/call",
+        "post",
+        aresponses.Response(text=load_fixture("packages_response_timezones.json"), status=200),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        client = Client(session=session)
+        await client.profile.login(TEST_EMAIL, TEST_PASSWORD)
+        packages = await client.profile.packages()
+        assert len(packages) == 5
+        assert packages[0].timestamp.isoformat() == "2019-02-26T15:05:34+00:00"
+        assert packages[1].timestamp.isoformat() == "2019-02-26T15:05:34+00:00"
+        assert packages[2].timestamp.isoformat() == "2019-02-26T15:05:34+00:00"
+        assert packages[3].timestamp.isoformat() == "2019-02-26T15:05:34+00:00"
+        assert packages[4].timestamp.isoformat() == "2019-02-26T15:05:34+00:00"
 
 @pytest.mark.asyncio
 async def test_packages_paginates(aresponses):
