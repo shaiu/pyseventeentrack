@@ -11,7 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 script/setup                  # poetry lock + install, then pre-commit install
 script/test                   # pytest with coverage (term-missing + coverage.xml)
-script/release                # version bump + tag + merge dev→master (dev branch only)
+script/release prepare X.Y.Z  # open the version-bump PR against dev
+script/release publish X.Y.Z  # after it merges: GitHub release vX.Y.Z on dev → PyPI
 
 # Single test / single file (needs the venv active, or prefix with .venv/bin/)
 .venv/bin/pytest tests/test_profile.py -q
@@ -90,8 +91,11 @@ JSON fixtures live in `tests/fixtures/` and are loaded by name with `load_fixtur
 
 ## Branching and release
 
-`dev` is the default and integration branch; `master` tracks releases. A pre-commit `no-commit-to-branch` hook blocks direct commits to both — work on a feature branch.
+`dev` is the default branch and the only long-lived one. There is no `master` branch: a release is a `vX.Y.Z` tag on `dev`, even though `ci.yaml` and the pre-commit `no-commit-to-branch` hook still list `master`. That hook blocks direct commits to `dev`, and `dev` itself has no GitHub branch protection, so the hook is the only thing enforcing "work on a feature branch".
 
-`script/release` (run from `dev` only) generates a `YEAR.MONTH.N` version, rewrites `version` in `pyproject.toml`, commits, tags, pushes, and merges `dev` into `master`. It temporarily uninstalls pre-commit to get past the branch guard. Publishing to PyPI is triggered separately by creating a **GitHub Release** (`ci-cd.yml`).
+Versions are semver, tags carry a `v` prefix, and the version lives only in `pyproject.toml`. Releasing takes two steps:
 
-Note the version scheme in `pyproject.toml` is currently semver-ish (`1.2.0`), which `script/release` will overwrite with the date-based scheme on the next run.
+1. `script/release prepare X.Y.Z` refuses a version that isn't newer than the latest `v*` tag. It bumps `pyproject.toml` in a throwaway worktree and opens a `Bump version to X.Y.Z` PR against `dev`.
+2. After that PR merges, `script/release publish X.Y.Z` checks that `dev` is at X.Y.Z, that the tag doesn't exist yet, and that the `CI` workflow passed on `dev`'s tip. It then creates the GitHub release `vX.Y.Z` on that commit's full SHA (GitHub rejects an abbreviated one). Extra arguments go to `gh release create`, e.g. `--title` or `--notes-file`. Without any, notes are generated from the merged PRs.
+
+Creating the GitHub release is what publishes to PyPI (`ci-cd.yml`, on `release: created`). Pushing a tag alone does not publish.
